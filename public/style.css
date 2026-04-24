@@ -77,6 +77,33 @@ button.mode.active {
 	color: var(--accent);
 }
 
+/* Block filter chips — shown in the top-right, affect agent view only. */
+.block-filters {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px;
+	border-radius: var(--radius);
+	background: rgba(0, 0, 0, 0.25);
+}
+.block-filters .chip {
+	font: inherit;
+	font-size: 11px;
+	padding: 4px 9px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: transparent;
+	color: rgba(255, 255, 255, 0.45);
+	border-radius: calc(var(--radius) - 2px);
+	cursor: pointer;
+	transition: color 120ms, background 120ms, border-color 120ms;
+}
+.block-filters .chip:hover { color: rgba(255, 255, 255, 0.8); }
+.block-filters .chip.active {
+	background: rgba(94, 234, 212, 0.12);
+	border-color: rgba(94, 234, 212, 0.3);
+	color: var(--accent);
+}
+
 input[type="search"], input[type="text"] {
 	font: inherit;
 	color: var(--text);
@@ -362,3 +389,76 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 /* Type row scroll cleanup */
 #legend::-webkit-scrollbar, #inspector::-webkit-scrollbar, .change-dag::-webkit-scrollbar, .content::-webkit-scrollbar { width: 6px; }
 #legend::-webkit-scrollbar-thumb, #inspector::-webkit-scrollbar-thumb, .change-dag::-webkit-scrollbar-thumb, .content::-webkit-scrollbar-thumb { background: var(--stroke-strong); border-radius: 3px; }
+
+
+/* Recall-into-context affordance — only appears for compacted blocks. */
+.insp-recall { padding: 10px 14px 0; }
+.recall-btn {
+	font: inherit;
+	font-size: 12px;
+	padding: 6px 12px;
+	border-radius: var(--radius);
+	border: 1px solid rgba(94, 234, 212, 0.5);
+	background: rgba(94, 234, 212, 0.08);
+	color: var(--accent);
+	cursor: pointer;
+	transition: background 120ms, border-color 120ms, color 120ms;
+}
+.recall-btn:hover { background: rgba(94, 234, 212, 0.18); }
+.recall-btn:disabled { cursor: default; opacity: 0.8; }
+.recall-btn.ok { border-color: rgba(122, 229, 130, 0.6); color: #7ae582; background: rgba(122, 229, 130, 0.12); }
+.recall-btn.err { border-color: rgba(255, 91, 107, 0.6); color: #ff5b6b; background: rgba(255, 91, 107, 0.12); }
+.recall-note {
+	margin-top: 6px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.5);
+	line-height: 1.4;
+}
+
+/* Full-text search results panel — anchored under the top search input. */
+.search-results {
+	position: fixed;
+	top: 56px;
+	right: 280px;
+	width: 380px;
+	max-height: 60vh;
+	overflow-y: auto;
+	background: rgba(11, 14, 23, 0.96);
+	border: 1px solid var(--stroke);
+	border-radius: var(--radius);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+	padding: 8px;
+	z-index: 30;
+}
+.sr-head { font-size: 11px; color: rgba(255,255,255,0.5); padding: 4px 6px 6px; }
+.sr-empty, .sr-err { font-size: 12px; color: rgba(255,255,255,0.4); padding: 8px; text-align: center; }
+.sr-err { color: #ff5b6b; }
+.sr-row {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	border-radius: calc(var(--radius) - 2px);
+	border-left: 2px solid transparent;
+	font: inherit;
+}
+.sr-row:hover { background: rgba(255, 255, 255, 0.04); }
+.sr-row.live { border-left-color: #5eead4; }
+.sr-row.compacted { border-left-color: rgba(255, 255, 255, 0.18); opacity: 0.85; }
+.sr-row.compacted:hover { opacity: 1; }
+.sr-title { font-size: 11px; margin-bottom: 4px; color: rgba(255,255,255,0.7); }
+.sr-kind { font-weight: 600; }
+.sr-kind.user_text { color: #4dd4ff; }
+.sr-kind.assistant_text { color: #ff7ad6; }
+.sr-kind.tool_use { color: #ffc857; }
+.sr-kind.tool_result { color: #7ae582; }
+.sr-kind.compaction { color: #b197fc; }
+.sr-agent { color: rgba(255,255,255,0.55); }
+.sr-ctx { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.06); margin-left: 4px; }
+.sr-row.live .sr-ctx { background: rgba(94, 234, 212, 0.14); color: var(--accent); }
+.sr-row.compacted .sr-ctx { color: rgba(255,255,255,0.4); }
+.sr-snip { font-size: 12px; color: rgba(255,255,255,0.85); line-height: 1.4; word-break: break-word; }

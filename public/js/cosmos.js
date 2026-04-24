@@ -143,26 +143,29 @@ export function buildCosmos(state, materials) {
 
 	// Links --------------------------------------------------------
 	const linkMeshes = [];
+	// Subagent lineage (spawn_parent) is drawn thicker, brighter, and with a
+	// larger arch so it reads as a parent→child tree even in a dense cosmos.
 	for (const link of state.links) {
 		const a = positions.get(link.sourceId);
 		const b = positions.get(link.targetId);
 		if (!a || !b) continue;
 
+		const isLineage = link.relationKey === "spawn_parent";
+
 		const mid = a.clone().add(b).multiplyScalar(0.5);
-		// Arc the midpoint upward (or away from origin) for readability.
-		const lift = Math.max(2, a.distanceTo(b) * 0.2);
+		const lift = Math.max(2, a.distanceTo(b) * (isLineage ? 0.32 : 0.2));
 		const outward = mid.clone().normalize().multiplyScalar(lift * 0.3);
 		mid.add(new THREE.Vector3(0, lift, 0)).add(outward);
 
 		const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-		const geom = new THREE.TubeGeometry(curve, 40, 0.04, 6, false);
+		const geom = new THREE.TubeGeometry(curve, 48, isLineage ? 0.075 : 0.04, 6, false);
 		const mat = new THREE.MeshBasicMaterial({
-			color: new THREE.Color("#5eead4"),
+			color: new THREE.Color(isLineage ? "#ffc857" : "#5eead4"),
 			transparent: true,
-			opacity: 0.6,
+			opacity: isLineage ? 0.85 : 0.6,
 		});
 		const mesh = new THREE.Mesh(geom, mat);
-		mesh.userData = { kind: "link", link };
+		mesh.userData = { kind: "link", link, isLineage };
 		group.add(mesh);
 		linkMeshes.push(mesh);
 	}

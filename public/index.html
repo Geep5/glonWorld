@@ -18,6 +18,7 @@
 
 <body>
 	<canvas id="scene"></canvas>
+	<div id="search-results" class="search-results" hidden></div>
 
 	<header id="top">
 		<div class="brand">
@@ -28,6 +29,11 @@
 		</div>
 		<div class="top-right">
 			<input id="search" type="search" placeholder="search id / type / name…" />
+			<div id="block-filters" class="block-filters" title="Toggle which agent blocks are shown">
+				<button class="chip active" data-filter="inContext">in context</button>
+				<button class="chip active" data-filter="compacted">compacted</button>
+				<button class="chip active" data-filter="memory">memory</button>
+			</div>
 			<button id="btn-cosmos" class="mode active" data-mode="cosmos">Cosmos</button>
 			<button id="btn-agent" class="mode" data-mode="agent">Agent</button>
 		</div>
@@ -45,6 +51,10 @@
 			<li><i style="background:#ff5b6b"></i>tool_error</li>
 			<li><i style="background:#b197fc"></i>compaction</li>
 		</ul>
+		<h3>Lineage</h3>
+		<ul class="block-legend">
+			<li><i style="background:#ffc857"></i>subagent lineage (spawn_parent)</li>
+			<li><i style="background:#5eead4"></i>other object links</li>
 		<h3>Controls</h3>
 		<ul class="controls">
 			<li><kbd>drag</kbd> orbit</li>
@@ -83,6 +93,7 @@
 				<div id="insp-links" class="link-list"></div>
 			</div>
 
+			<div id="insp-recall" class="insp-recall"></div>
 			<div class="insp-section" id="insp-content-section" hidden>
 				<h3 id="insp-content-title">Content</h3>
 				<pre id="insp-content" class="content"></pre>

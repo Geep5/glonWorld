@@ -95,19 +95,52 @@ export function buildAgentView(agent, blocks, tools, materials) {
 			? Math.min(0.6, 0.18 + Math.sqrt((b.text?.length ?? 0) / 200) * 0.12)
 			: 0.18;
 
+		const hasMemory = (b.memoryRefs?.length ?? 0) > 0;
+		const compacted = b.inContext === false;
+
 		const mat = new THREE.MeshStandardMaterial({
 			color,
 			emissive: color,
-			emissiveIntensity: 0.6,
+			// Memory-surfaced blocks glow hot; compacted blocks barely emit.
+			emissiveIntensity: hasMemory ? 1.6 : (compacted ? 0.15 : 0.6),
 			metalness: 0.15,
 			roughness: 0.5,
+			transparent: compacted,
+			opacity: compacted ? 0.35 : 1,
 		});
 		const mesh = new THREE.Mesh(materials.sphereSmall, mat);
 		mesh.position.copy(pos);
 		mesh.scale.setScalar(size);
-		mesh.userData = { kind: "block", block: b, agentId: agent.id };
+		mesh.userData = {
+			kind: "block",
+			block: b,
+			agentId: agent.id,
+			// Tags used by filter toggles and selection logic downstream.
+			inContext: !compacted,
+			memoryRefs: b.memoryRefs ?? [],
+		};
 		group.add(mesh);
 		nodeMeshes.push(mesh);
+
+		// Halo for memory-surfaced blocks: a larger translucent shell in
+		// the block's color. Makes the glow visible even when the block
+		// itself is tiny.
+		if (hasMemory) {
+			const halo = new THREE.Mesh(
+				materials.halo,
+				new THREE.MeshBasicMaterial({
+					color,
+					transparent: true,
+					opacity: 0.28,
+					depthWrite: false,
+					side: THREE.BackSide,
+				}),
+			);
+			halo.position.copy(pos);
+			halo.scale.setScalar(size * 3.2);
+			halo.userData = { kind: "block-halo", blockId: b.id };
+			group.add(halo);
+		}
 	}
 
 	// Spine — a thin line tracing the spiral so you can see time flow.

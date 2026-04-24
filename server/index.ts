@@ -14,7 +14,7 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getRoot } from "./reader.js";
+import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getRoot, search } from "./reader.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,6 +22,7 @@ const ROOT = join(__dirname, "..");
 
 const app = express();
 app.disable("x-powered-by");
+app.use(express.json({ limit: "64kb" }));
 
 // ── API ────────────────────────────────────────────────────────────
 
@@ -54,6 +55,37 @@ app.get("/api/agents/:id/conversation", (req, res) => {
 	res.json(conv);
 });
 
+// Free-text search across object metadata + agent block content. Used by the
+// frontend search box to surface compacted turns the user can recall.
+app.get("/api/search", (req, res) => {
+	const q = String(req.query.q ?? "");
+	const limit = Number(req.query.limit ?? 20);
+	res.json(search(q, Number.isFinite(limit) && limit > 0 ? limit : 20));
+});
+
+// Re-inject a compacted block into an agent's live context. Proxies to the
+// glon daemon at $GLON_DISPATCH_URL (default http://127.0.0.1:6430), which
+// owns the actor that mutates the DAG. Returns the new block id so the
+// frontend can re-fetch the conversation and highlight it.
+app.post("/api/agents/:id/recall/:blockId", async (req, res) => {
+	const { id, blockId } = req.params;
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	try {
+		const r = await fetch(dispatchUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ prefix: "/agent", action: "recall", args: [id, blockId] }),
+		});
+		if (!r.ok) {
+			const body = await r.text();
+			return res.status(502).json({ error: `glon daemon dispatch failed (${r.status})`, body });
+		}
+		const data = await r.json() as { result?: { newBlockId: string; sourceKind: string; truncated: boolean } };
+		res.json({ ok: true, ...(data.result ?? data) });
+	} catch (err: any) {
+		res.status(503).json({ error: "could not reach glon daemon", detail: err?.message ?? String(err) });
+	}
+});
 // ── Static: three.js + frontend ────────────────────────────────────
 //
 // Serve three's ESM bundle from node_modules so the browser can resolve

@@ -13,9 +13,9 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../Graice/src/proto.js";
-import { computeState, type ObjectState } from "../../Graice/src/dag/dag.js";
-import { hexEncode } from "../../Graice/src/crypto.js";
+import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../Graice/glonGraice/src/proto.js";
+import { computeState, type ObjectState } from "../../Graice/glonGraice/src/dag/dag.js";
+import { hexEncode } from "../../Graice/glonGraice/src/crypto.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
@@ -83,6 +83,15 @@ export interface VizBlock {
 	tokensBefore?: number;
 	turnCount?: number;
 	priorSummaryId?: string;
+	// Classification injected by getAgentConversation for the host agent.
+	inContext?: boolean;
+	memoryRefs?: MemoryRef[];
+}
+
+export interface MemoryRef {
+	id: string;
+	typeKey: "pinned_fact" | "milestone";
+	label: string; // fact key or milestone title
 }
 
 export interface VizTool {
@@ -361,6 +370,10 @@ interface Cache {
 	takenAt: number;
 	dirMtime: number;
 	perObject: Map<string, PerObject>;
+	// For each (ownerAgentId, blockId) pair, the memory objects whose
+	// `sourced_from_block(_id|s)` field points at that block. Precomputed
+	// once per cache rebuild; O(memory-objects), keyed for O(1) lookup.
+	memoryIndex: Map<string, MemoryRef[]>;
 }
 
 let cache: Cache | null = null;
@@ -378,23 +391,171 @@ function changesDirMtime(): number {
 }
 
 function loadAll(): Map<string, PerObject> {
-	const result = new Map<string, PerObject>();
+	const all = new Map<string, PerObject>();
 	for (const oid of listObjectDirs()) {
 		const changes = readChangesForObject(oid);
 		const po = buildPerObject(oid, changes);
-		if (po) result.set(oid, po);
+		if (po) all.set(oid, po);
 	}
+	const filtered = JUNK_ENABLED ? filterJunk(all) : all;
+	return DEDUPE_ENABLED ? dedupePerObject(filtered) : filtered;
+}
+
+// ── Junk filter ────────────────────────────────────────────────────────
+//
+// Drop objects that are clearly malformed test artifacts:
+//
+//   1. Missing typeKey — the object has changes but no `objectCreate` op,
+//      meaning it was never completed. Nothing downstream can make sense
+//      of it.
+//   2. Agents with a `system` field present but shorter than 10 chars —
+//      the signature of `/agent new X --system "..."` being misparsed by
+//      the shell, which also leaves the system prompt bleeding into the
+//      `name` field.
+//
+// Set GLON_WORLD_JUNK_FILTER=0 to disable.
+
+const JUNK_ENABLED = process.env.GLON_WORLD_JUNK_FILTER !== "0";
+
+function junkReason(po: PerObject): string | null {
+	const { state } = po;
+	if (!state.typeKey) return "no typeKey";
+	if (state.typeKey === "agent") {
+		const system = extractString(state.fields.get("system"));
+		if (system !== undefined && system.trim().length < 10) {
+			return `truncated system field (${JSON.stringify(system)})`;
+		}
+	}
+	return null;
+}
+
+function filterJunk(all: Map<string, PerObject>): Map<string, PerObject> {
+	const result = new Map<string, PerObject>();
+	let dropped = 0;
+	for (const po of all.values()) {
+		const reason = junkReason(po);
+		if (reason) {
+			dropped++;
+			console.log(`  junk: dropped ${po.object.typeKey || "<no-type>"}:${po.object.id.slice(0, 8)} — ${reason}`);
+			continue;
+		}
+		result.set(po.object.id, po);
+	}
+	if (dropped > 0) console.log(`  junk: filtered ${dropped} malformed object(s); set GLON_WORLD_JUNK_FILTER=0 to disable`);
 	return result;
+}
+
+// ── Identity-based dedup ────────────────────────────────────────
+//
+// A `/gracie setup` run twice creates two peer:self and two agent:gracie
+// objects with byte-identical identity fields. The DAG stores them as
+// distinct objects (glon identifies by object-id, not by content). For
+// the viz, we collapse groups with matching identity signatures and
+// keep the most-active member (max changeCount, tie-break on updatedAt).
+// Set GLON_WORLD_DEDUPE=0 to disable.
+
+const DEDUPE_ENABLED = process.env.GLON_WORLD_DEDUPE !== "0";
+
+function dedupeSignature(po: PerObject): string | null {
+	const { state } = po;
+	if (state.deleted) return null;
+	switch (state.typeKey) {
+		case "peer": {
+			const name = extractString(state.fields.get("display_name")) ?? "";
+			if (!name) return null;
+			const kind = extractString(state.fields.get("kind")) ?? "";
+			const email = extractString(state.fields.get("email")) ?? "";
+			const discord = extractString(state.fields.get("discord_id")) ?? "";
+			return `peer|${name}|${kind}|${email}|${discord}`;
+		}
+		case "agent": {
+			const name = extractString(state.fields.get("name")) ?? "";
+			if (!name) return null;
+			return `agent|${name}`;
+		}
+		default:
+			return null;
+	}
+}
+
+function pickWinner(group: PerObject[]): PerObject {
+	return group.reduce((best, cur) => {
+		if (cur.object.changeCount > best.object.changeCount) return cur;
+		if (cur.object.changeCount === best.object.changeCount && cur.object.updatedAt > best.object.updatedAt) return cur;
+		return best;
+	});
+}
+
+function dedupePerObject(all: Map<string, PerObject>): Map<string, PerObject> {
+	const bySig = new Map<string, PerObject[]>();
+	const passthrough: PerObject[] = [];
+	for (const po of all.values()) {
+		const sig = dedupeSignature(po);
+		if (!sig) { passthrough.push(po); continue; }
+		const bucket = bySig.get(sig);
+		if (bucket) bucket.push(po); else bySig.set(sig, [po]);
+	}
+	const result = new Map<string, PerObject>();
+	for (const po of passthrough) result.set(po.object.id, po);
+	let dropped = 0;
+	for (const group of bySig.values()) {
+		const winner = pickWinner(group);
+		result.set(winner.object.id, winner);
+		if (group.length > 1) {
+			dropped += group.length - 1;
+			const losers = group.filter((p) => p !== winner).map((p) => `${p.object.typeKey}:${p.object.id.slice(0, 8)} (changes=${p.object.changeCount})`);
+			console.log(`  dedupe: kept ${winner.object.typeKey}:${winner.object.id.slice(0, 8)} (changes=${winner.object.changeCount}), dropped ${losers.join(", ")}`);
+		}
+	}
+	if (dropped > 0) console.log(`  dedupe: filtered ${dropped} duplicate object(s); set GLON_WORLD_DEDUPE=0 to disable`);
+	return result;
+}
+
+function memoryIndexKey(ownerAgentId: string, blockId: string): string {
+	return `${ownerAgentId}\x00${blockId}`;
+}
+
+function buildMemoryIndex(perObject: Map<string, PerObject>): Map<string, MemoryRef[]> {
+	const index = new Map<string, MemoryRef[]>();
+	const push = (ownerAgentId: string, blockId: string, ref: MemoryRef) => {
+		if (!ownerAgentId || !blockId) return;
+		const k = memoryIndexKey(ownerAgentId, blockId);
+		const existing = index.get(k);
+		if (existing) existing.push(ref); else index.set(k, [ref]);
+	};
+	for (const po of perObject.values()) {
+		const fields = po.state.fields;
+		const ownerRaw = fields.get("owner");
+		const ownerId = ownerRaw?.linkValue?.targetId;
+		if (!ownerId) continue;
+		if (po.object.typeKey === "pinned_fact") {
+			const blockId = extractString(fields.get("sourced_from_block_id"));
+			if (!blockId) continue;
+			const label = extractString(fields.get("key")) ?? po.object.id.slice(0, 8);
+			push(ownerId, blockId, { id: po.object.id, typeKey: "pinned_fact", label });
+		} else if (po.object.typeKey === "milestone") {
+			const list = fields.get("sourced_from_blocks");
+			const items = list?.valuesValue?.items ?? [];
+			const label = extractString(fields.get("title")) ?? po.object.id.slice(0, 8);
+			for (const item of items) {
+				const blockId = extractString(item);
+				if (blockId) push(ownerId, blockId, { id: po.object.id, typeKey: "milestone", label });
+			}
+		}
+	}
+	return index;
 }
 
 function getCache(): Cache {
 	const mtime = changesDirMtime();
 	const now = Date.now();
 	if (cache && now - cache.takenAt < CACHE_TTL_MS && cache.dirMtime === mtime) return cache;
+	const perObject = loadAll();
 	cache = {
 		takenAt: now,
 		dirMtime: mtime,
-		perObject: loadAll(),
+		perObject,
+		memoryIndex: buildMemoryIndex(perObject),
 	};
 	return cache;
 }
@@ -547,9 +708,159 @@ export function getAgentConversation(id: string): {
 	const po = c.perObject.get(id);
 	if (!po) return null;
 	if (po.object.typeKey !== "agent") return null;
-	return { agent: po.object, blocks: po.blocks, tools: po.tools };
+
+	// Find the latest compaction's firstKeptBlockId. Blocks before that
+	// boundary are compacted (skipped by the model on the next ask), the
+	// rest are still in the live context window. No compaction → everything
+	// is in context.
+	let latestCompactionTs = -Infinity;
+	let firstKeptBlockId: string | undefined;
+	for (const b of po.blocks) {
+		if (b.kind === "compaction" && b.timestamp > latestCompactionTs) {
+			latestCompactionTs = b.timestamp;
+			firstKeptBlockId = b.firstKeptBlockId;
+		}
+	}
+	let inContext = !firstKeptBlockId;
+	const blocks: VizBlock[] = po.blocks.map((b) => {
+		if (firstKeptBlockId && b.id === firstKeptBlockId) inContext = true;
+		const memoryRefs = c.memoryIndex.get(memoryIndexKey(id, b.id));
+		// Compaction blocks sit on the boundary — they are themselves part
+		// of the live system prompt (their summary is injected), so classify
+		// them as in-context regardless of position.
+		const blockInContext = b.kind === "compaction" ? true : inContext;
+		return { ...b, inContext: blockInContext, memoryRefs };
+	});
+	return { agent: po.object, blocks, tools: po.tools };
 }
 
 export function getRoot(): string {
 	return GLON_ROOT;
+}
+
+
+// ── Search ──────────────────────────────────────────────────────────────
+//
+// Two scopes:
+//   1. objects — typeKey + name + id-prefix + scalar field values
+//   2. blocks  — raw text content across every agent's blocks (user, assistant,
+//                  tool_result, compaction summary, plus tool_use name+input)
+//
+// Block hits include the host agent's id and an in-context flag so the UI can
+// distinguish 'click to focus a live turn' from 'click to recall a compacted
+// turn back into context'.
+
+export interface SearchHitObject {
+	id: string;
+	typeKey: string;
+	name?: string;
+	score: number;
+	matchedField: string;
+}
+
+export interface SearchHitBlock {
+	agentId: string;
+	agentName?: string;
+	blockId: string;
+	kind: string;
+	timestamp: number;
+	inContext: boolean;
+	snippet: string;
+	score: number;
+}
+
+export interface SearchResults {
+	query: string;
+	objects: SearchHitObject[];
+	blocks: SearchHitBlock[];
+}
+
+function makeSnippet(haystack: string, needle: string, radius: number = 60): string {
+	const lower = haystack.toLowerCase();
+	const i = lower.indexOf(needle);
+	if (i < 0) return haystack.slice(0, radius * 2);
+	const start = Math.max(0, i - radius);
+	const end = Math.min(haystack.length, i + needle.length + radius);
+	const pre = start > 0 ? "…" : "";
+	const post = end < haystack.length ? "…" : "";
+	return (pre + haystack.slice(start, end) + post).replace(/\s+/g, " ").trim();
+}
+
+// Compute the in-context flag the same way getAgentConversation does, so the
+// UI sees identical 'compacted vs live' classification when navigating from a
+// search hit.
+function classifyAgentBlocks(po: PerObject): { block: VizBlock; inContext: boolean }[] {
+	let latestCompactionTs = -Infinity;
+	let firstKeptBlockId: string | undefined;
+	for (const b of po.blocks) {
+		if (b.kind === "compaction" && b.timestamp > latestCompactionTs) {
+			latestCompactionTs = b.timestamp;
+			firstKeptBlockId = b.firstKeptBlockId;
+		}
+	}
+	let inContext = !firstKeptBlockId;
+	return po.blocks.map((b) => {
+		if (firstKeptBlockId && b.id === firstKeptBlockId) inContext = true;
+		const blockInContext = b.kind === "compaction" ? true : inContext;
+		return { block: b, inContext: blockInContext };
+	});
+}
+
+export function search(query: string, limit: number = 20): SearchResults {
+	const q = query.trim().toLowerCase();
+	if (!q) return { query, objects: [], blocks: [] };
+	const c = getCache();
+	const objects: SearchHitObject[] = [];
+	const blocks: SearchHitBlock[] = [];
+
+	for (const po of c.perObject.values()) {
+		const obj = po.object;
+		let matched: { field: string; score: number } | null = null;
+		if ((obj.name ?? "").toLowerCase().includes(q)) matched = { field: "name", score: 100 };
+		else if (obj.typeKey.toLowerCase().includes(q)) matched = { field: "type", score: 60 };
+		else if (obj.id.startsWith(q)) matched = { field: "id", score: 80 };
+		else for (const [k, v] of Object.entries(obj.scalars)) {
+			const sv = String(v).toLowerCase();
+			if (sv.includes(q)) { matched = { field: `scalar:${k}`, score: 40 }; break; }
+		}
+		if (matched) {
+			objects.push({ id: obj.id, typeKey: obj.typeKey, name: obj.name, score: matched.score, matchedField: matched.field });
+		}
+
+		if (obj.typeKey === "agent") {
+			const classified = classifyAgentBlocks(po);
+			for (const { block, inContext } of classified) {
+				let hay = "";
+				let score = 0;
+				if (block.text) { hay = block.text; score = 70; }
+				else if (block.kind === "tool_use") {
+					hay = `${block.toolName ?? ""} ${JSON.stringify(block.toolInput ?? {})}`;
+					score = 50;
+				} else if (block.kind === "compaction") {
+					hay = block.summary ?? "";
+					score = 65;
+				}
+				if (!hay) continue;
+				if (!hay.toLowerCase().includes(q)) continue;
+				// In-context hits rank slightly higher: live conversation should
+				// surface above forgotten history when the same phrase appears in
+				// both — reflects 'most likely what you wanted' UX.
+				const boost = inContext ? 5 : 0;
+				blocks.push({
+					agentId: obj.id,
+					agentName: obj.name,
+					blockId: block.id,
+					kind: block.kind,
+					timestamp: block.timestamp,
+					inContext,
+					snippet: makeSnippet(hay, q),
+					score: score + boost,
+				});
+			}
+		}
+	}
+
+	objects.sort((a, b) => b.score - a.score);
+	blocks.sort((a, b) => b.score - a.score || b.timestamp - a.timestamp);
+	return { query, objects: objects.slice(0, limit), blocks: blocks.slice(0, limit) };
 }

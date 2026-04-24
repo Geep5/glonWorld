@@ -31,6 +31,8 @@ let hoverId = null;
 let labelCanvas, labelCtx;
 let mode = "cosmos";
 let timeFilter = null;      // ms upper bound, or null for live
+// Per-state visibility for agent blocks. All on = show everything.
+const blockFilters = { inContext: true, compacted: true, memory: true };
 
 // Shared reusable geometries + materials.
 const materials = {
@@ -181,19 +183,35 @@ function bindUI() {
 
 	// Search -----------------------------------------------------
 	const search = document.getElementById("search");
+	let searchDebounce = 0;
 	search.addEventListener("input", () => {
 		const q = search.value.trim().toLowerCase();
 		highlightMatches(q);
+		// Backend search runs debounced so typing fast doesn't storm the server.
+		clearTimeout(searchDebounce);
+		if (!q) { renderSearchResults(null); return; }
+		searchDebounce = setTimeout(() => fetchSearchResults(q), 140);
 	});
 	search.addEventListener("keydown", (e) => {
 		if (e.key === "Enter") {
 			const q = search.value.trim().toLowerCase();
 			const match = findBestMatch(q);
-			if (match) {
-				select(match.id, { focus: true });
-			}
+			if (match) select(match.id, { focus: true });
+			else fetchSearchResults(q); // still show block hits even if no object match
+		} else if (e.key === "Escape") {
+			renderSearchResults(null);
 		}
 	});
+
+	// Block filter chips ------------------------------------------
+	for (const chip of document.querySelectorAll("#block-filters .chip")) {
+		chip.addEventListener("click", () => {
+			const key = chip.dataset.filter;
+			blockFilters[key] = !blockFilters[key];
+			chip.classList.toggle("active", blockFilters[key]);
+			applyAgentBlockVisibility();
+		});
+	}
 
 	// Time scrubber ----------------------------------------------
 	const range = document.getElementById("time-range");
@@ -334,7 +352,7 @@ function onClick(e) {
 		select(ud.id);
 	} else if (ud.kind === "block") {
 		// Keep agent object selected but just update the inspector to the block
-		showBlockInInspector(ud.block);
+		showBlockInInspector(ud.block, ud.agentId);
 	}
 }
 
@@ -384,7 +402,7 @@ function highlightSelected() {
 	}
 }
 
-function showBlockInInspector(block) {
+function showBlockInInspector(block, agentId) {
 	// When a block is clicked in agent view, surface the block content in
 	// the panel without replacing the agent object selection.
 	const wrap = document.getElementById("inspector-content");
@@ -425,6 +443,46 @@ function showBlockInInspector(block) {
 
 	document.getElementById("insp-changes").innerHTML = "";
 	document.getElementById("insp-change-count").textContent = "—";
+	renderRecallButton(block, agentId);
+}
+
+// Render a "Recall into context" button for compacted blocks and wire it to
+// the server-side proxy. The button only appears when the block is
+// currently out of the agent's live context window — an in-context block
+// has nothing to recall.
+function renderRecallButton(block, agentId) {
+	const host = document.getElementById("insp-recall");
+	if (!host) return;
+	host.innerHTML = "";
+	if (!agentId) return;
+	if (block.kind === "compaction") return; // summaries don't need recall
+	const isCompacted = block.inContext === false;
+	if (!isCompacted) return;
+
+	const btn = document.createElement("button");
+	btn.className = "recall-btn";
+	btn.textContent = "← Recall into context";
+	btn.title = "Append this block as a fresh user turn so the agent's next reply sees it.";
+	btn.addEventListener("click", async () => {
+		btn.disabled = true;
+		btn.textContent = "Recalling…";
+		try {
+			const r = await fetch(`/api/agents/${encodeURIComponent(agentId)}/recall/${encodeURIComponent(block.id)}`, { method: "POST" });
+			const data = await r.json();
+			if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+			btn.textContent = `Recalled ✓ (new block ${String(data.newBlockId ?? "").slice(0, 8)})`;
+			btn.classList.add("ok");
+			if (typeof refreshAgentView === "function") refreshAgentView();
+		} catch (err) {
+			btn.textContent = `Recall failed: ${err?.message ?? err}`;
+			btn.classList.add("err");
+		}
+	});
+	host.appendChild(btn);
+	const note = document.createElement("div");
+	note.className = "recall-note";
+	note.textContent = "This block is out of the agent's current context. Clicking appends it as a fresh user turn in the DAG so the next ask sees it.";
+	host.appendChild(note);
 }
 
 function emissiveHex(kind, isError) {
@@ -491,6 +549,90 @@ function hideTooltip() {
 	tooltipEl.hidden = true;
 }
 
+// ── Full-text search panel ───────────────────────────────────────
+//
+// Lives beside the search box. Object hits are already surfaced via live
+// highlights; the panel's value-add is block hits — compacted turns the
+// user can click to focus (and if out-of-context, recall via the inspector
+// button).
+
+async function fetchSearchResults(q) {
+	try {
+		const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
+		if (!r.ok) { renderSearchResults({ query: q, objects: [], blocks: [], error: `HTTP ${r.status}` }); return; }
+		const data = await r.json();
+		renderSearchResults(data);
+	} catch (err) {
+		renderSearchResults({ query: q, objects: [], blocks: [], error: err?.message ?? String(err) });
+	}
+}
+
+function renderSearchResults(data) {
+	const host = document.getElementById("search-results");
+	if (!host) return;
+	if (!data) { host.hidden = true; host.innerHTML = ""; return; }
+	host.hidden = false;
+	host.innerHTML = "";
+
+	if (data.error) {
+		const err = document.createElement("div");
+		err.className = "sr-err";
+		err.textContent = `search failed: ${data.error}`;
+		host.appendChild(err);
+		return;
+	}
+
+	const blocks = data.blocks ?? [];
+	if (blocks.length === 0) {
+		const empty = document.createElement("div");
+		empty.className = "sr-empty";
+		empty.textContent = "no block matches";
+		host.appendChild(empty);
+		return;
+	}
+
+	const head = document.createElement("div");
+	head.className = "sr-head";
+	head.textContent = `${blocks.length} block match${blocks.length === 1 ? "" : "es"}`;
+	host.appendChild(head);
+
+	for (const hit of blocks) {
+		const row = document.createElement("button");
+		row.type = "button";
+		row.className = `sr-row ${hit.inContext ? "live" : "compacted"}`;
+		const title = document.createElement("div");
+		title.className = "sr-title";
+		title.innerHTML = `<span class="sr-kind ${hit.kind}">${escapeHtml(hit.kind)}</span> · <span class="sr-agent">${escapeHtml(hit.agentName ?? hit.agentId.slice(0, 8))}</span> · <span class="sr-ctx">${hit.inContext ? "live" : "compacted"}</span>`;
+		const snip = document.createElement("div");
+		snip.className = "sr-snip";
+		snip.textContent = hit.snippet;
+		row.appendChild(title);
+		row.appendChild(snip);
+		row.addEventListener("click", () => navigateToBlock(hit.agentId, hit.blockId));
+		host.appendChild(row);
+	}
+}
+
+// Navigate to a specific block: select the owning agent, enter agent view,
+// and show the block in the inspector. The recall button (if applicable)
+// renders automatically for out-of-context blocks.
+async function navigateToBlock(agentId, blockId) {
+	select(agentId, { focus: true });
+	await featureAgent(agentId);
+	// Wait a tick for the stellar view to finish building, then try to find the
+	// block's classified object and show its inspector. The loaded conversation
+	// is on agentCtx; we look up the block by id in the block meshes.
+	setTimeout(() => {
+		if (!agentCtx) return;
+		for (const child of agentCtx.group.children) {
+			const ud = child.userData;
+			if (ud?.kind === "block" && ud.block?.id === blockId) {
+				showBlockInInspector(ud.block, ud.agentId);
+				return;
+			}
+		}
+	}, 300);
+}
 // ── Search / filter ───────────────────────────────────────────────
 
 function findBestMatch(q) {
@@ -547,12 +689,36 @@ function applyTimeFilter() {
 		node.mesh.visible = !hidden && !muted;
 		if (node.halo) node.halo.visible = !hidden && !muted;
 	}
-	if (agentCtx) {
-		for (const child of agentCtx.group.children) {
-			const ud = child.userData;
-			if (ud?.kind === "block") {
-				child.visible = timeFilter == null || ud.block.timestamp <= timeFilter;
-			}
+	applyAgentBlockVisibility();
+}
+
+// Agent-block visibility composes time filter + per-state chips. A
+// block is shown iff its time is within the filter AND at least one
+// matching state chip is on (memory-surfaced blocks survive whenever
+// the memory chip is on, regardless of their in/out-of-context state).
+function applyAgentBlockVisibility() {
+	if (!agentCtx) return;
+	const show = (ud) => {
+		if (timeFilter != null && ud.block.timestamp > timeFilter) return false;
+		const hasMemory = (ud.memoryRefs?.length ?? 0) > 0;
+		if (hasMemory && blockFilters.memory) return true;
+		if (ud.inContext && blockFilters.inContext) return true;
+		if (!ud.inContext && blockFilters.compacted) return true;
+		return false;
+	};
+	const haloShow = new Map(); // blockId → visible
+	for (const child of agentCtx.group.children) {
+		const ud = child.userData;
+		if (ud?.kind === "block" && ud.block) {
+			const v = show(ud);
+			child.visible = v;
+			haloShow.set(ud.block.id, v);
+		}
+	}
+	for (const child of agentCtx.group.children) {
+		const ud = child.userData;
+		if (ud?.kind === "block-halo") {
+			child.visible = haloShow.get(ud.blockId) ?? true;
 		}
 	}
 }
