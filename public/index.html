@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>glonWorld</title>
+	<link rel="stylesheet" href="./style.css" />
+
+	<script type="importmap">
+		{
+			"imports": {
+				"three": "/vendor/three/build/three.module.js",
+				"three/addons/": "/vendor/three/examples/jsm/"
+			}
+		}
+	</script>
+</head>
+
+<body>
+	<canvas id="scene"></canvas>
+
+	<header id="top">
+		<div class="brand">
+			<span class="mark"></span>
+			<span class="name">glon<span class="name-world">World</span></span>
+			<span class="sep">·</span>
+			<span id="root-path" class="root">loading…</span>
+		</div>
+		<div class="top-right">
+			<input id="search" type="search" placeholder="search id / type / name…" />
+			<button id="btn-cosmos" class="mode active" data-mode="cosmos">Cosmos</button>
+			<button id="btn-agent" class="mode" data-mode="agent">Agent</button>
+		</div>
+	</header>
+
+	<aside id="legend">
+		<h3>Types</h3>
+		<ul id="legend-list"></ul>
+		<h3>Agent blocks</h3>
+		<ul class="block-legend">
+			<li><i style="background:#4dd4ff"></i>user</li>
+			<li><i style="background:#ff7ad6"></i>assistant</li>
+			<li><i style="background:#ffc857"></i>tool_use</li>
+			<li><i style="background:#7ae582"></i>tool_result</li>
+			<li><i style="background:#ff5b6b"></i>tool_error</li>
+			<li><i style="background:#b197fc"></i>compaction</li>
+		</ul>
+		<h3>Controls</h3>
+		<ul class="controls">
+			<li><kbd>drag</kbd> orbit</li>
+			<li><kbd>scroll</kbd> zoom</li>
+			<li><kbd>right drag</kbd> pan</li>
+			<li><kbd>click</kbd> select</li>
+			<li><kbd>dbl-click</kbd> focus</li>
+			<li><kbd>esc</kbd> back to cosmos</li>
+		</ul>
+	</aside>
+
+	<aside id="inspector">
+		<div id="inspector-empty" class="inspector-empty">
+			<h2>Select an object</h2>
+			<p>Click any node in the cosmos to inspect it. The glowing node is the agent — try it.</p>
+			<div class="stats" id="stats"></div>
+		</div>
+		<div id="inspector-content" hidden>
+			<div class="type-badge" id="insp-type"></div>
+			<h2 id="insp-title"></h2>
+			<div id="insp-subtitle" class="muted"></div>
+
+			<div class="insp-section" id="insp-agent-section" hidden>
+				<h3>Agent</h3>
+				<div id="insp-agent-stats" class="kv"></div>
+				<button id="btn-enter-agent" class="primary">Enter agent view →</button>
+			</div>
+
+			<div class="insp-section" id="insp-scalars-section" hidden>
+				<h3>Fields</h3>
+				<div id="insp-scalars" class="kv"></div>
+			</div>
+
+			<div class="insp-section" id="insp-links-section" hidden>
+				<h3>Links</h3>
+				<div id="insp-links" class="link-list"></div>
+			</div>
+
+			<div class="insp-section" id="insp-content-section" hidden>
+				<h3 id="insp-content-title">Content</h3>
+				<pre id="insp-content" class="content"></pre>
+			</div>
+
+			<div class="insp-section">
+				<h3>Changes
+					<span class="count" id="insp-change-count"></span>
+				</h3>
+				<div id="insp-changes" class="change-dag"></div>
+			</div>
+		</div>
+	</aside>
+
+	<footer id="bottom">
+		<div class="status">
+			<span id="fps" class="muted"></span>
+			<span id="mode-label" class="muted">cosmos</span>
+			<span id="hover" class="muted"></span>
+		</div>
+		<div class="time-scrubber">
+			<span class="muted small">replay</span>
+			<input id="time-range" type="range" min="0" max="100" value="100" />
+			<span id="time-label" class="muted small">live</span>
+		</div>
+	</footer>
+
+	<div id="tooltip" class="tooltip" hidden></div>
+
+	<script type="module" src="./js/main.js"></script>
+</body>
+</html>
