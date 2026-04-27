@@ -1,5 +1,5 @@
 /**
- * Cosmos view — every object in the Glon environment laid out in 3D.
+ * Cosmos view - every object in the glon environment laid out in 3D.
  *
  * Layout: objects are grouped by type; each type gets a ring at a
  * type-dependent radius + Y offset, with members placed at even

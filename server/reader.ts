@@ -1,8 +1,8 @@
 /**
- * reader — derive a visualization-friendly model of a Glon environment
+ * reader — derive a visualization-friendly model of a glon environment
  * by reading `.pb` change files directly from disk.
  *
- * Glon's data model on disk:
+ * glon's data model on disk:
  *   ~/.glon/changes/<object-id>/<sha256-hex>.pb    — one Change per file
  *
  * We reuse glon's decode + state-computation code verbatim. The graph
@@ -447,9 +447,9 @@ function filterJunk(all: Map<string, PerObject>): Map<string, PerObject> {
 
 // ── Identity-based dedup ────────────────────────────────────────
 //
-// A `/gracie setup` run twice creates two peer:self and two agent:gracie
-// objects with byte-identical identity fields. The DAG stores them as
-// distinct objects (glon identifies by object-id, not by content). For
+// Re-running `/holdfast setup` (or any harness setup) creates a second
+// peer:self and a second agent with byte-identical identity fields. The
+// DAG stores them as distinct objects (glon identifies by object-id, not by content). For
 // the viz, we collapse groups with matching identity signatures and
 // keep the most-active member (max changeCount, tie-break on updatedAt).
 // Set GLON_WORLD_DEDUPE=0 to disable.

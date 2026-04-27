@@ -1,13 +1,13 @@
 # glonWorld
 
-Interactive 3D visualization of a **[Glon](https://github.com/Geep5/Glon)** environment — every object, every program, the agent's full DAG-backed conversation, and a click-to-recall affordance for memory management in 3D space.
+Interactive 3D visualization of a **[glon](https://github.com/Geep5/glon)** environment — every object, every program, the agent's full DAG-backed conversation, and a click-to-recall affordance for memory management in 3D space.
 
 ![cosmos view](./snapshots/cosmos-final.png)
 ![agent view](./snapshots/agent-final.png)
 
 ## What you see
 
-**Cosmos view** (default).  Every Glon object is a 3D node, colored by type (agent, peer, program, typescript, proto, json, …). Nodes are laid out in concentric rings per type with the agent as the central star. Typed `ObjectLink` relations between objects show up as arcs:
+**Cosmos view** (default).  Every glon object is a 3D node, colored by type (agent, peer, program, typescript, proto, json, …). Nodes are laid out in concentric rings per type with the agent as the central star. Typed `ObjectLink` relations between objects show up as arcs:
 
 - **Teal arcs** — generic object links (`owner`, `principal`, etc.).
 - **Amber arcs** (thicker, taller arch) — subagent lineage (`spawn_parent`). Reads as parent→child trees at a glance.
@@ -46,7 +46,7 @@ You usually won't need to recall anything — compaction summaries cover most co
 
 ## How it works
 
-It reads `.pb` files directly from `~/.glon/changes/<object-id>/*.pb` (or `$GLON_DATA/changes/`). It reuses the Glon project's own protobuf codec and DAG replay — the viz is a pure derived view over the change DAG, not a separate data source.
+It reads `.pb` files directly from `~/.glon/changes/<object-id>/*.pb` (or `$GLON_DATA/changes/`). It reuses the glon project's own protobuf codec and DAG replay — the viz is a pure derived view over the change DAG, not a separate data source.
 
 ```
  ~/.glon/changes/                     glonWorld server (Node/Express)
@@ -71,7 +71,7 @@ The **recall** path (POST `/api/agents/:id/recall/:blockId`) does require the gl
 The reader applies two filters by default before serving any view, so noise from earlier development doesn't pollute the cosmos:
 
 - **Junk filter** — drops objects with no `typeKey` (incomplete create) and agents whose `system` field is suspiciously short (the signature of a `/agent new X --system "…"` invocation that the shell mis-tokenized). Set `GLON_WORLD_JUNK_FILTER=0` to disable.
-- **Dedupe filter** — collapses identity-duplicate peers (matching `display_name + kind + email + discord_id`) and agents (matching `name`); keeps the member with the highest `changeCount` (tie-break on `updatedAt`). Useful if `/gracie setup` was ever run twice. Set `GLON_WORLD_DEDUPE=0` to disable.
+- **Dedupe filter** \u2014 collapses identity-duplicate peers (matching `display_name + kind + email + discord_id`) and agents (matching `name`); keeps the member with the highest `changeCount` (tie-break on `updatedAt`). Useful if `/holdfast setup` was ever run twice. Set `GLON_WORLD_DEDUPE=0` to disable.
 
 Both filters log every drop to the server console on each cache rebuild.
 
@@ -101,7 +101,7 @@ Requires the sibling `../Graice/glonGraice` checkout (the reader imports its pro
 | `GLON_WORLD_JUNK_FILTER` | unset (on) | set to `0` to keep malformed objects |
 
 ```bash
-# point at a different Glon data dir
+# point at a different glon data dir
 GLON_DATA=~/.glon-peer-b npm run dev
 
 # bind another port / host
