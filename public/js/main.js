@@ -13,26 +13,23 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { buildCosmos } from "./cosmos.js";
-import { buildAgentView } from "./agent.js";
 import { colorForType } from "./colors.js";
-import { bindInspector, setLanding, showObject, clear as clearInspector } from "./inspector.js";
+import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
+import { setupLiveLog } from "./livelog.js";
 
 // ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
-let agentConv = null;       // { agent, blocks, tools } for the featured agent
-let featuredAgentId = null;
 
 let scene, camera, renderer, controls;
-let cosmosCtx, agentCtx;
+let cosmosCtx;
 let pickables = [];         // meshes the raycaster considers
 let selectedId = null;
 let hoverId = null;
 let labelCanvas, labelCtx;
-let mode = "cosmos";
 let timeFilter = null;      // ms upper bound, or null for live
-// Per-state visibility for agent blocks. All on = show everything.
-const blockFilters = { inContext: true, compacted: true, memory: true };
+// Watched agent for in-context highlighting; picked by activity at init.
+let contextAgentId = null;
 
 // Shared reusable geometries + materials.
 const materials = {
@@ -51,22 +48,60 @@ async function init() {
 	]);
 	document.getElementById("root-path").textContent = metaRes.root;
 	snapshot = stateRes;
-
-	// Pick featured agent — prefer the one with most activity.
 	const agents = snapshot.objects.filter((o) => o.typeKey === "agent");
 	agents.sort((a, b) => (b.agentStats?.lastActivity ?? 0) - (a.agentStats?.lastActivity ?? 0));
-	featuredAgentId = agents[0]?.id ?? null;
-	if (featuredAgentId) {
-		agentConv = await fetch(`/api/agents/${featuredAgentId}/conversation`).then((r) => r.json());
-	}
-
+	contextAgentId = agents[0]?.id ?? null;
 	setupThree();
 	buildScenes();
 	bindUI();
+	setupLiveLog({
+		onSelectObject: (id) => select(id, { focus: true }),
+		onEachEvent: (ev) => {
+			// Heat bump for fresh activity.
+			if (Date.now() - ev.ts <= 60_000) {
+				cosmosCtx?.bumpHeat?.(ev.objectId, ev.ts);
+				for (const id of ev.referencedObjects ?? []) {
+					cosmosCtx?.bumpHeat?.(id, ev.ts);
+				}
+			}
+			// Any change on the watched agent or one that references objects
+			// can shift the in-context set; refresh it (debounced).
+			const affectsContext =
+				ev.objectId === contextAgentId ||
+				(ev.referencedObjects ?? []).length > 0;
+			if (affectsContext) scheduleContextRefresh();
+		},
+	});
+	refreshContextActive();
 	setLanding(snapshot);
 
 	animate();
 }
+
+// In-context object set: which cosmos balls are currently referenced by
+// any in-context block of `contextAgentId`. Refreshed on init and whenever
+// the SSE stream signals a change that could shift the set. We debounce so
+// a burst of tool calls collapses into a single fetch.
+let contextRefreshTimer = 0;
+function scheduleContextRefresh() {
+	clearTimeout(contextRefreshTimer);
+	contextRefreshTimer = setTimeout(refreshContextActive, 500);
+}
+async function refreshContextActive() {
+	if (!cosmosCtx?.setContextActive) return;
+	if (!contextAgentId) { cosmosCtx.setContextActive(new Set()); return; }
+	try {
+		const r = await fetch(`/api/agents/${encodeURIComponent(contextAgentId)}/context`);
+		if (!r.ok) return;
+		const data = await r.json();
+		contextActiveIds = new Set(data.objectIds ?? []);
+		cosmosCtx.setContextActive(contextActiveIds);
+		setContextState({ agentId: contextAgentId, contextIds: contextActiveIds });
+	} catch (err) {
+		console.warn("context refresh failed", err);
+	}
+}
+let contextActiveIds = new Set();
 
 function setupThree() {
 	const canvas = document.getElementById("scene");
@@ -104,6 +139,7 @@ function setupThree() {
 	canvas.addEventListener("pointermove", onPointerMove);
 	canvas.addEventListener("click", onClick);
 	canvas.addEventListener("dblclick", onDoubleClick);
+	canvas.addEventListener("pointerleave", () => { cursorActive = false; });
 
 	// Label overlay — CSS-canvas on top of WebGL for sharp billboard text.
 	labelCanvas = document.createElement("canvas");
@@ -120,10 +156,7 @@ function buildScenes() {
 	cosmosCtx = buildCosmos(snapshot, materials);
 	scene.add(cosmosCtx.group);
 
-	if (agentConv) {
-		agentCtx = buildAgentView(agentConv.agent, agentConv.blocks, agentConv.tools, materials);
-		scene.add(agentCtx.group);
-	}
+
 
 	// Build pickable list — we only want meshes the user interacts with.
 	refreshPickables();
@@ -141,6 +174,181 @@ function buildScenes() {
 		li.addEventListener("click", () => toggleTypeMute(type, li));
 		legend.appendChild(li);
 	}
+	renderJobs(snapshot.objects);
+	startJobsRefresh();
+}
+
+// Re-render the jobs panel from a fresh /api/state every JOBS_POLL_MS.
+// Each row shows context-window fill (the bar that drives compaction),
+// turn count, and a live/idle dot driven by lastActivity.
+const JOBS_POLL_MS = 5000;
+let jobsTimer = 0;
+function startJobsRefresh() {
+	clearInterval(jobsTimer);
+	jobsTimer = setInterval(async () => {
+		try {
+			const s = await fetch("/api/state").then((r) => r.json());
+			renderJobs(s.objects);
+		} catch { /* keep last paint on transient error */ }
+	}, JOBS_POLL_MS);
+	// Smooth 1Hz tick to update reminder countdown bars between polls.
+	setInterval(tickReminderBars, 1000);
+}
+
+function tickReminderBars() {
+	const now = Date.now();
+	document.querySelectorAll("#jobs-list .job-row.reminder").forEach((row) => {
+		const fire = Number(row.dataset.fire ?? 0);
+		const created = Number(row.dataset.created ?? 0);
+		if (!fire) return;
+		const total = Math.max(1, fire - created);
+		const elapsed = Math.max(0, Math.min(total, now - created));
+		const pct = Math.round((elapsed / total) * 100);
+		const fillEl = row.querySelector(".job-bar-fill");
+		if (fillEl) fillEl.style.width = pct + "%";
+		// Refresh the meta countdown only if the row is pending; static rows don't need updates.
+		if (row.classList.contains("pending")) {
+			const metaEl = row.querySelector(".job-meta");
+			if (metaEl) metaEl.textContent = `reminder \u00b7 fires in ${formatDuration(fire - now)}`;
+		}
+	});
+}
+
+// AI jobs = every running agent + every reminder. Reminders carry a
+// fire_at_ms field so we can render a live countdown; agents render a
+// context-window fill bar.
+function renderJobs(objects) {
+	const host = document.getElementById("jobs-list");
+	const countEl = document.getElementById("jobs-count");
+	if (!host) return;
+	const agents = (objects ?? []).filter((o) => o.typeKey === "agent" && o.agentStats);
+	// Reminders: pending or fired/failed/cancelled within the last 24h. Older
+	// ones are noise (e.g. a long-dead cancelled scheduler from months ago).
+	const now = Date.now();
+	const REMINDER_HISTORY_MS = 24 * 3600_000;
+	const reminders = (objects ?? []).filter((o) => {
+		if (o.typeKey !== "reminder" || o.deleted) return false;
+		const sc = o.scalars ?? {};
+		const fire = Number(sc.fire_at_ms ?? 0);
+		const status = String(sc.status ?? "pending");
+		const pending = fire > now && status !== "sent" && status !== "cancelled" && status !== "failed";
+		return pending || (now - fire) <= REMINDER_HISTORY_MS;
+	});
+	jobsRows = [
+		...agents.map((a) => ({ kind: "agent", obj: a, sortKey: a.agentStats.lastActivity ?? 0 })),
+		...reminders.map((r) => ({ kind: "reminder", obj: r, sortKey: reminderSortKey(r) })),
+	];
+	jobsRows.sort((x, y) => y.sortKey - x.sortKey);
+	countEl.textContent = String(jobsRows.length);
+	host.innerHTML = "";
+	for (const row of jobsRows) {
+		const el = row.kind === "agent" ? renderAgentRow(row.obj) : renderReminderRow(row.obj);
+		host.appendChild(el);
+	}
+	if (jobsRows.length === 0) {
+		const li = document.createElement("li");
+		li.className = "job-row empty";
+		li.textContent = "no agents or reminders";
+		host.appendChild(li);
+	}
+}
+
+// Cached so the 1Hz tick can recompute countdown bars without re-fetching.
+let jobsRows = [];
+
+function renderAgentRow(a) {
+	const s = a.agentStats;
+	const now = Date.now();
+	const fill = Math.min(1, s.contextWindow > 0 ? s.effectiveTokens / s.contextWindow : 0);
+	const pct = Math.round(fill * 100);
+	const ageMs = now - (s.lastActivity ?? 0);
+	const active = ageMs < 30_000;
+	const li = document.createElement("li");
+	li.className = "job-row" + (active ? " active" : "");
+	li.title = `${s.userTurns} user / ${s.assistantTurns} assistant turns; ${s.toolUses} tool calls; ${formatNumber(s.effectiveTokens)} of ${formatNumber(s.contextWindow)} tokens (${pct}%)`;
+	li.innerHTML = `
+		<span class="job-dot"></span>
+		<span class="job-name">${escapeHtml(a.name ?? shortId(a.id))}</span>
+		<span class="job-meta">agent \u00b7 ${s.userTurns}u / ${s.assistantTurns}a \u00b7 ${formatTimeAgo(ageMs)} \u00b7 ${formatNumber(s.effectiveTokens)} / ${formatNumber(s.contextWindow)} (${pct}%)</span>
+		<div class="job-bar"><div class="job-bar-fill" style="width:${pct}%"></div></div>
+	`;
+	li.addEventListener("click", () => select(a.id, { focus: true }));
+	return li;
+}
+
+// Reminder lifecycle classes the row visually:
+//   pending  (fire_at in future, status not sent/cancelled/failed)
+//   live     (fire_at \u2264 now but not yet status=sent: actively firing)
+//   sent / failed / cancelled = static, color-coded.
+function reminderSortKey(r) {
+	const sc = r.scalars ?? {};
+	const fire = Number(sc.fire_at_ms ?? 0);
+	const status = sc.status ?? "";
+	const now = Date.now();
+	// Pending future fires float to the top (most imminent first); past ones
+	// rank by recency.
+	if (fire > now && status !== "sent" && status !== "cancelled" && status !== "failed") {
+		return now + (Number.MAX_SAFE_INTEGER - fire); // soonest = highest
+	}
+	return fire;
+}
+
+function renderReminderRow(r) {
+	const sc = r.scalars ?? {};
+	const now = Date.now();
+	const fire = Number(sc.fire_at_ms ?? 0);
+	const created = Number(sc.created_at_ms ?? r.createdAt ?? 0);
+	const status = String(sc.status ?? "pending");
+	const note = String(sc.note ?? sc.channel ?? r.name ?? shortId(r.id));
+	const pending = fire > now && status !== "sent" && status !== "cancelled" && status !== "failed";
+	const total = Math.max(1, fire - created);
+	const elapsed = Math.max(0, Math.min(total, now - created));
+	const pct = Math.round((elapsed / total) * 100);
+	let meta;
+	if (pending) {
+		meta = `reminder \u00b7 fires in ${formatDuration(fire - now)}`;
+	} else if (status === "sent") {
+		meta = `reminder \u00b7 fired ${formatTimeAgo(now - fire)}`;
+	} else {
+		meta = `reminder \u00b7 ${status} ${formatTimeAgo(now - fire)}`;
+	}
+	const li = document.createElement("li");
+	li.className = `job-row reminder status-${status}` + (pending ? " pending" : "");
+	li.title = `${note}\nstatus: ${status}\nfire_at: ${new Date(fire).toLocaleString()}\ncreated: ${new Date(created).toLocaleString()}`;
+	li.dataset.kind = "reminder";
+	li.dataset.fire = String(fire);
+	li.dataset.created = String(created);
+	li.innerHTML = `
+		<span class="job-dot"></span>
+		<span class="job-name">${escapeHtml(note)}</span>
+		<span class="job-meta">${meta}</span>
+		<div class="job-bar"><div class="job-bar-fill" style="width:${pct}%"></div></div>
+	`;
+	li.addEventListener("click", () => select(r.id, { focus: true }));
+	return li;
+}
+
+// Friendly forward-duration formatter used for fires-in countdowns.
+function formatDuration(ms) {
+	if (ms < 0) ms = 0;
+	if (ms < 1000) return "<1s";
+	if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
+	if (ms < 3_600_000) {
+		const m = Math.floor(ms / 60_000);
+		const s = Math.floor((ms % 60_000) / 1000);
+		return s > 0 ? `${m}m ${s}s` : `${m}m`;
+	}
+	const h = Math.floor(ms / 3_600_000);
+	const m = Math.floor((ms % 3_600_000) / 60_000);
+	return `${h}h ${m}m`;
+}
+
+function formatTimeAgo(ms) {
+	if (ms < 1000) return "now";
+	if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+	if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+	if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+	return `${Math.floor(ms / 86_400_000)}d ago`;
 }
 
 function refreshPickables() {
@@ -148,37 +356,22 @@ function refreshPickables() {
 	cosmosCtx.group.traverse((obj) => {
 		if (obj.userData?.kind === "object") pickables.push(obj);
 	});
-	if (agentCtx) {
-		agentCtx.group.traverse((obj) => {
-			if (obj.userData?.kind === "block" || obj.userData?.kind === "tool" || obj.userData?.kind === "agent") {
-				pickables.push(obj);
-			}
-		});
-	}
+
 }
 
 function bindUI() {
-	document.getElementById("btn-cosmos").addEventListener("click", () => switchMode("cosmos"));
-	document.getElementById("btn-agent").addEventListener("click", () => switchMode("agent"));
 	document.addEventListener("keydown", (e) => {
-		if (e.key === "Escape") switchMode("cosmos");
-		if (e.key === "a" && !isTyping(e)) switchMode("agent");
-		if (e.key === "c" && !isTyping(e)) switchMode("cosmos");
+		// Esc clears the current selection.
+		if (e.key === "Escape") {
+			selectedId = null;
+			clearInspector();
+			highlightSelected();
+		}
 	});
 
 	bindInspector({
-		onNavigate: (id) => {
-			select(id, { focus: true });
-			switchMode("cosmos");
-		},
-		onEnterAgent: (id) => {
-			if (id === featuredAgentId) switchMode("agent");
-			else {
-				// The inspector is showing an agent that isn't the featured one.
-				// Swap the agent view to this agent on the fly.
-				featureAgent(id);
-			}
-		},
+		onNavigate: (id) => select(id, { focus: true }),
+		onInject: () => scheduleContextRefresh(),
 	});
 
 	// Search -----------------------------------------------------
@@ -203,15 +396,7 @@ function bindUI() {
 		}
 	});
 
-	// Block filter chips ------------------------------------------
-	for (const chip of document.querySelectorAll("#block-filters .chip")) {
-		chip.addEventListener("click", () => {
-			const key = chip.dataset.filter;
-			blockFilters[key] = !blockFilters[key];
-			chip.classList.toggle("active", blockFilters[key]);
-			applyAgentBlockVisibility();
-		});
-	}
+
 
 	// Time scrubber ----------------------------------------------
 	const range = document.getElementById("time-range");
@@ -233,41 +418,7 @@ function bindUI() {
 	});
 }
 
-// ── Mode switching ─────────────────────────────────────────────────
 
-async function featureAgent(id) {
-	if (!id) return;
-	featuredAgentId = id;
-	agentConv = await fetch(`/api/agents/${id}/conversation`).then((r) => r.json());
-	if (agentCtx) scene.remove(agentCtx.group);
-	agentCtx = buildAgentView(agentConv.agent, agentConv.blocks, agentConv.tools, materials);
-	scene.add(agentCtx.group);
-	refreshPickables();
-	switchMode("agent");
-}
-
-function switchMode(next) {
-	if (next === mode) return;
-	mode = next;
-	document.getElementById("mode-label").textContent = mode;
-	document.getElementById("btn-cosmos").classList.toggle("active", mode === "cosmos");
-	document.getElementById("btn-agent").classList.toggle("active", mode === "agent");
-
-	if (mode === "agent") {
-		if (!agentCtx) return;
-		cosmosCtx.group.visible = false;
-		agentCtx.group.visible = true;
-		tweenCamera(new THREE.Vector3(0, 18, 38), new THREE.Vector3(0, 0, 0));
-		// Surface the agent in the inspector so stats are visible the moment
-		// you land in the stellar view.
-		if (featuredAgentId) select(featuredAgentId);
-	} else {
-		cosmosCtx.group.visible = true;
-		if (agentCtx) agentCtx.group.visible = false;
-		const home = new THREE.Vector3(0, 25, 60);
-		tweenCamera(home, new THREE.Vector3(0, 0, 0));
-	}
-}
 
 let activeTween = null;
 function tweenCamera(targetPos, targetLookAt) {
@@ -295,11 +446,17 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let pointer = { x: 0, y: 0 };
 
+// Cursor magnet: the animate loop reads `cursorActive` to decide whether to
+// pass the current cursor ray to per-view tick fns. Set false on mouseleave so
+// balls relax back to their float position when the pointer isn't on the canvas.
+let cursorActive = false;
+
 function onPointerMove(e) {
 	pointer.x = e.clientX;
 	pointer.y = e.clientY;
 	mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
 	mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+	cursorActive = e.target === renderer.domElement;
 	raycaster.setFromCamera(mouse, camera);
 	const hits = raycaster.intersectObjects(visiblePickables(), false);
 	const first = hits[0]?.object;
@@ -312,19 +469,7 @@ function onPointerMove(e) {
 	const ud = first.userData;
 	if (ud.kind === "object") {
 		hoverId = ud.id;
-		document.getElementById("hover").textContent = `${ud.typeKey} · ${shortId(ud.id)}`;
-		showObjectTooltip(ud.obj);
-	} else if (ud.kind === "block") {
-		hoverId = ud.block.id;
-		document.getElementById("hover").textContent = `${ud.block.kind} · ${new Date(ud.block.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-		showBlockTooltip(ud.block);
-	} else if (ud.kind === "tool") {
-		hoverId = null;
-		document.getElementById("hover").textContent = `tool · ${ud.tool.name}`;
-		showToolTooltip(ud.tool);
-	} else if (ud.kind === "agent") {
-		hoverId = ud.id;
-		document.getElementById("hover").textContent = `agent · ${ud.obj.name ?? shortId(ud.id)}`;
+		document.getElementById("hover").textContent = `${ud.typeKey} \u00b7 ${shortId(ud.id)}`;
 		showObjectTooltip(ud.obj);
 	}
 }
@@ -348,11 +493,8 @@ function onClick(e) {
 	const first = hits[0]?.object;
 	if (!first) return;
 	const ud = first.userData;
-	if (ud.kind === "object" || ud.kind === "agent") {
+	if (ud.kind === "object") {
 		select(ud.id);
-	} else if (ud.kind === "block") {
-		// Keep agent object selected but just update the inspector to the block
-		showBlockInInspector(ud.block, ud.agentId);
 	}
 }
 
@@ -363,10 +505,7 @@ function onDoubleClick(e) {
 	const first = hits[0]?.object;
 	if (!first) return;
 	const ud = first.userData;
-	if (ud.kind === "agent" || (ud.kind === "object" && ud.typeKey === "agent")) {
-		if (ud.id === featuredAgentId) switchMode("agent");
-		else featureAgent(ud.id);
-	} else if (ud.kind === "object") {
+	if (ud.kind === "object") {
 		// Focus the camera on the object.
 		const target = first.position.clone();
 		const offset = target.clone().normalize().multiplyScalar(6);
@@ -472,7 +611,6 @@ function renderRecallButton(block, agentId) {
 			if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
 			btn.textContent = `Recalled ✓ (new block ${String(data.newBlockId ?? "").slice(0, 8)})`;
 			btn.classList.add("ok");
-			if (typeof refreshAgentView === "function") refreshAgentView();
 		} catch (err) {
 			btn.textContent = `Recall failed: ${err?.message ?? err}`;
 			btn.classList.add("err");
@@ -512,32 +650,7 @@ function showObjectTooltip(obj) {
 	positionTooltip();
 }
 
-function showBlockTooltip(block) {
-	const color = {
-		user_text: "#4dd4ff", assistant_text: "#ff7ad6", tool_use: "#ffc857",
-		tool_result: block.isError ? "#ff5b6b" : "#7ae582",
-		compaction: "#b197fc",
-	}[block.kind] ?? "#8690a3";
-	const head = block.toolName ?? block.kind;
-	const preview = block.kind === "compaction"
-		? block.summary?.slice(0, 240)
-		: (block.text ?? (block.toolInput ? JSON.stringify(block.toolInput).slice(0, 240) : ""));
-	tooltipEl.innerHTML = `
-		<div class="title" style="color:${color}">${escapeHtml(head)}</div>
-		<div class="sub">${new Date(block.timestamp).toLocaleString()}</div>
-		${preview ? `<div class="preview">${escapeHtml(String(preview).slice(0, 360))}${String(preview).length > 360 ? "…" : ""}</div>` : ""}
-	`;
-	positionTooltip();
-}
 
-function showToolTooltip(tool) {
-	tooltipEl.innerHTML = `
-		<div class="title" style="color:#ffc857">${escapeHtml(tool.name)}</div>
-		<div class="sub">${escapeHtml(tool.targetPrefix)} · ${escapeHtml(tool.targetAction)}</div>
-		${tool.description ? `<div class="preview">${escapeHtml(tool.description)}</div>` : ""}
-	`;
-	positionTooltip();
-}
 
 function positionTooltip() {
 	tooltipEl.hidden = false;
@@ -613,25 +726,18 @@ function renderSearchResults(data) {
 	}
 }
 
-// Navigate to a specific block: select the owning agent, enter agent view,
-// and show the block in the inspector. The recall button (if applicable)
-// renders automatically for out-of-context blocks.
+// Navigate to a specific block: select the owning agent and surface the
+// block content in the inspector. Out-of-context blocks render a recall
+// button automatically.
 async function navigateToBlock(agentId, blockId) {
 	select(agentId, { focus: true });
-	await featureAgent(agentId);
-	// Wait a tick for the stellar view to finish building, then try to find the
-	// block's classified object and show its inspector. The loaded conversation
-	// is on agentCtx; we look up the block by id in the block meshes.
-	setTimeout(() => {
-		if (!agentCtx) return;
-		for (const child of agentCtx.group.children) {
-			const ud = child.userData;
-			if (ud?.kind === "block" && ud.block?.id === blockId) {
-				showBlockInInspector(ud.block, ud.agentId);
-				return;
-			}
-		}
-	}, 300);
+	try {
+		const conv = await fetch(`/api/agents/${encodeURIComponent(agentId)}/conversation`).then((r) => r.json());
+		const block = (conv?.blocks ?? []).find((b) => b.id === blockId);
+		if (block) showBlockInInspector(block, agentId);
+	} catch (err) {
+		console.warn("navigateToBlock failed", err);
+	}
 }
 // ── Search / filter ───────────────────────────────────────────────
 
@@ -689,39 +795,9 @@ function applyTimeFilter() {
 		node.mesh.visible = !hidden && !muted;
 		if (node.halo) node.halo.visible = !hidden && !muted;
 	}
-	applyAgentBlockVisibility();
 }
 
-// Agent-block visibility composes time filter + per-state chips. A
-// block is shown iff its time is within the filter AND at least one
-// matching state chip is on (memory-surfaced blocks survive whenever
-// the memory chip is on, regardless of their in/out-of-context state).
-function applyAgentBlockVisibility() {
-	if (!agentCtx) return;
-	const show = (ud) => {
-		if (timeFilter != null && ud.block.timestamp > timeFilter) return false;
-		const hasMemory = (ud.memoryRefs?.length ?? 0) > 0;
-		if (hasMemory && blockFilters.memory) return true;
-		if (ud.inContext && blockFilters.inContext) return true;
-		if (!ud.inContext && blockFilters.compacted) return true;
-		return false;
-	};
-	const haloShow = new Map(); // blockId → visible
-	for (const child of agentCtx.group.children) {
-		const ud = child.userData;
-		if (ud?.kind === "block" && ud.block) {
-			const v = show(ud);
-			child.visible = v;
-			haloShow.set(ud.block.id, v);
-		}
-	}
-	for (const child of agentCtx.group.children) {
-		const ud = child.userData;
-		if (ud?.kind === "block-halo") {
-			child.visible = haloShow.get(ud.blockId) ?? true;
-		}
-	}
-}
+
 
 // ── Frame loop ────────────────────────────────────────────────────
 
@@ -737,14 +813,11 @@ function animate() {
 
 	if (activeTween) activeTween(now);
 
-	// (intentionally no auto-rotation on the cosmos — picking stability wins)
-
-	// Pulse agent corona.
-	if (agentCtx) {
-		const pulse = 1 + Math.sin(now * 0.002) * 0.05;
-		agentCtx.corona.scale.setScalar(4.2 * pulse);
-		agentCtx.star.rotation.y += dt * 0.15;
-	}
+	const t = now / 1000;
+	const ray = cursorActive ? raycaster.ray : null;
+	// Cosmos: balls float gently and lean toward the cursor; tubes follow them.
+	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, ray);
+	// Agent: corona breathes, in-context blocks twinkle, blocks lean toward the cursor.
 
 	controls.update();
 	renderer.render(scene, camera);
@@ -768,56 +841,27 @@ function drawLabels() {
 
 	const screen = new THREE.Vector3();
 
-	if (mode === "cosmos") {
-		// Label only featured types and the selected object to reduce clutter.
-		for (const [id, node] of cosmosCtx.nodes) {
-			const obj = node.mesh.userData.obj;
-			const isFeatured = obj.typeKey === "agent" || obj.typeKey === "peer" || id === selectedId || id === hoverId;
-			if (!isFeatured) continue;
-			if (!node.mesh.visible) continue;
-			screen.copy(node.mesh.position);
-			screen.project(camera);
-			if (screen.z > 1) continue;
-			const x = (screen.x * 0.5 + 0.5) * labelCanvas.width / (window.devicePixelRatio || 1);
-			const y = (-screen.y * 0.5 + 0.5) * labelCanvas.height / (window.devicePixelRatio || 1);
-
-			const { hex } = colorForType(obj.typeKey);
-			const label = obj.name ?? shortId(obj.id);
-			labelCtx.fillStyle = "rgba(5,6,10,.75)";
-			const metrics = labelCtx.measureText(label);
-			const padX = 6, padY = 3;
-			labelCtx.fillRect(x + 12, y - 8, metrics.width + padX * 2, 18);
-			labelCtx.fillStyle = hex;
-			labelCtx.fillText(label, x + 12 + padX, y - 8 + padY);
-		}
-	}
-
-	if (mode === "agent" && agentCtx) {
-		// Star label
-		screen.copy(agentCtx.star.position);
+	// Label featured types (agents, peers) plus the selection/hover, so the
+	// scene stays readable without burying every dot in text.
+	for (const [id, node] of cosmosCtx.nodes) {
+		const obj = node.mesh.userData.obj;
+		const isFeatured = obj.typeKey === "agent" || obj.typeKey === "peer" || id === selectedId || id === hoverId;
+		if (!isFeatured) continue;
+		if (!node.mesh.visible) continue;
+		screen.copy(node.mesh.position);
 		screen.project(camera);
+		if (screen.z > 1) continue;
 		const x = (screen.x * 0.5 + 0.5) * labelCanvas.width / (window.devicePixelRatio || 1);
 		const y = (-screen.y * 0.5 + 0.5) * labelCanvas.height / (window.devicePixelRatio || 1);
-		const name = agentConv?.agent?.name ?? "agent";
-		labelCtx.fillStyle = "rgba(5,6,10,.75)";
-		const label = name.toUpperCase();
-		const metrics = labelCtx.measureText(label);
-		labelCtx.fillRect(x + 18, y - 10, metrics.width + 12, 22);
-		labelCtx.fillStyle = "#5eead4";
-		labelCtx.font = "bold 13px ui-monospace, 'SF Mono', Menlo, monospace";
-		labelCtx.fillText(label, x + 24, y - 7);
-		labelCtx.font = "12px ui-monospace, 'SF Mono', Menlo, monospace";
 
-		// Tool labels
-		for (const child of agentCtx.group.children) {
-			if (child.userData?.kind !== "tool") continue;
-			screen.copy(child.position);
-			screen.project(camera);
-			const tx = (screen.x * 0.5 + 0.5) * labelCanvas.width / (window.devicePixelRatio || 1);
-			const ty = (-screen.y * 0.5 + 0.5) * labelCanvas.height / (window.devicePixelRatio || 1);
-			labelCtx.fillStyle = "#ffc857";
-			labelCtx.fillText(child.userData.tool.name, tx + 10, ty - 6);
-		}
+		const { hex } = colorForType(obj.typeKey);
+		const label = obj.name ?? shortId(obj.id);
+		labelCtx.fillStyle = "rgba(5,6,10,.75)";
+		const metrics = labelCtx.measureText(label);
+		const padX = 6, padY = 3;
+		labelCtx.fillRect(x + 12, y - 8, metrics.width + padX * 2, 18);
+		labelCtx.fillStyle = hex;
+		labelCtx.fillText(label, x + 12 + padX, y - 8 + padY);
 	}
 }
 

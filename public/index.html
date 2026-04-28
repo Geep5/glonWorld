@@ -29,32 +29,25 @@
 		</div>
 		<div class="top-right">
 			<input id="search" type="search" placeholder="search id / type / name…" />
-			<div id="block-filters" class="block-filters" title="Toggle which agent blocks are shown">
-				<button class="chip active" data-filter="inContext">in context</button>
-				<button class="chip active" data-filter="compacted">compacted</button>
-				<button class="chip active" data-filter="memory">memory</button>
-			</div>
-			<button id="btn-cosmos" class="mode active" data-mode="cosmos">Cosmos</button>
-			<button id="btn-agent" class="mode" data-mode="agent">Agent</button>
 		</div>
 	</header>
 
 	<aside id="legend">
 		<h3>Types</h3>
 		<ul id="legend-list"></ul>
-		<h3>Agent blocks</h3>
-		<ul class="block-legend">
-			<li><i style="background:#4dd4ff"></i>user</li>
-			<li><i style="background:#ff7ad6"></i>assistant</li>
-			<li><i style="background:#ffc857"></i>tool_use</li>
-			<li><i style="background:#7ae582"></i>tool_result</li>
-			<li><i style="background:#ff5b6b"></i>tool_error</li>
-			<li><i style="background:#b197fc"></i>compaction</li>
-		</ul>
 		<h3>Lineage</h3>
 		<ul class="block-legend">
 			<li><i style="background:#ffc857"></i>subagent lineage (spawn_parent)</li>
 			<li><i style="background:#5eead4"></i>other object links</li>
+		</ul>
+		<h3>Activity</h3>
+		<div class="heat-strip" title="Balls heat up when their object receives a change. Brightness fades over ~30 seconds.">
+			<span class="heat-strip-bar"></span>
+			<span class="heat-strip-tick muted small">cold</span>
+			<span class="heat-strip-tick muted small heat-strip-tick-right">hot</span>
+		</div>
+		<h3>AI jobs <span id="jobs-count" class="count"></span></h3>
+		<ul id="jobs-list" class="jobs-list"></ul>
 		<h3>Controls</h3>
 		<ul class="controls">
 			<li><kbd>drag</kbd> orbit</li>
@@ -62,14 +55,14 @@
 			<li><kbd>right drag</kbd> pan</li>
 			<li><kbd>click</kbd> select</li>
 			<li><kbd>dbl-click</kbd> focus</li>
-			<li><kbd>esc</kbd> back to cosmos</li>
+			<li><kbd>esc</kbd> clear selection</li>
 		</ul>
 	</aside>
 
 	<aside id="inspector">
 		<div id="inspector-empty" class="inspector-empty">
 			<h2>Select an object</h2>
-			<p>Click any node in the cosmos to inspect it. The glowing node is the agent — try it.</p>
+			<p>Click any ball to inspect it. The glowing ball is the agent. Activity heat lights up balls touched by recent changes.</p>
 			<div class="stats" id="stats"></div>
 		</div>
 		<div id="inspector-content" hidden>
@@ -80,7 +73,6 @@
 			<div class="insp-section" id="insp-agent-section" hidden>
 				<h3>Agent</h3>
 				<div id="insp-agent-stats" class="kv"></div>
-				<button id="btn-enter-agent" class="primary">Enter agent view →</button>
 			</div>
 
 			<div class="insp-section" id="insp-scalars-section" hidden>
@@ -93,6 +85,7 @@
 				<div id="insp-links" class="link-list"></div>
 			</div>
 
+			<div id="insp-inject" class="insp-recall"></div>
 			<div id="insp-recall" class="insp-recall"></div>
 			<div class="insp-section" id="insp-content-section" hidden>
 				<h3 id="insp-content-title">Content</h3>
@@ -108,10 +101,20 @@
 		</div>
 	</aside>
 
+	<aside id="livelog" class="collapsed" aria-label="Live event log">
+		<header class="livelog-header">
+			<span class="livelog-dot"></span>
+			<span class="livelog-title">live</span>
+			<span id="livelog-status" class="livelog-status"></span>
+			<span id="livelog-count" class="livelog-count muted small">0</span>
+			<button id="livelog-clear" class="livelog-clear" title="Clear log">clear</button>
+		</header>
+		<div id="livelog-list" class="livelog-list"></div>
+	</aside>
+
 	<footer id="bottom">
 		<div class="status">
 			<span id="fps" class="muted"></span>
-			<span id="mode-label" class="muted">cosmos</span>
 			<span id="hover" class="muted"></span>
 		</div>
 		<div class="time-scrubber">

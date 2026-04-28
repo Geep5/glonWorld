@@ -13,9 +13,9 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../Graice/glonGraice/src/proto.js";
-import { computeState, type ObjectState } from "../../Graice/glonGraice/src/dag/dag.js";
-import { hexEncode } from "../../Graice/glonGraice/src/crypto.js";
+import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../Graice/src/proto.js";
+import { computeState, type ObjectState } from "../../Graice/src/dag/dag.js";
+import { hexEncode } from "../../Graice/src/crypto.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
@@ -58,6 +58,9 @@ export interface AgentStats {
 	compactions: number;
 	effectiveTokens: number;
 	lastActivity: number;
+	// Compaction-driving budget. effectiveTokens / contextWindow is the
+	// 'how full is this conversation' progress, useful as a job indicator.
+	contextWindow: number;
 }
 
 export interface VizChange {
@@ -265,6 +268,17 @@ function estimateTextTokens(s: string): number {
 	return Math.ceil(s.length / 3.5);
 }
 
+function extractInt(v: Value | undefined, fallback: number): number {
+	if (!v) return fallback;
+	if (v.intValue !== undefined) return v.intValue;
+	if (v.floatValue !== undefined) return Math.round(v.floatValue);
+	if (v.stringValue !== undefined) {
+		const n = parseInt(v.stringValue, 10);
+		return Number.isFinite(n) ? n : fallback;
+	}
+	return fallback;
+}
+
 function computeAgentStats(state: ObjectState): AgentStats {
 	const blocks = classifyBlocks(state);
 	let userTurns = 0, assistantTurns = 0, toolUses = 0, toolResults = 0, compactions = 0;
@@ -305,6 +319,7 @@ function computeAgentStats(state: ObjectState): AgentStats {
 		compactions,
 		effectiveTokens,
 		lastActivity,
+		contextWindow: extractInt(state.fields.get("compaction_context_window"), 200_000),
 	};
 }
 
@@ -736,6 +751,52 @@ export function getAgentConversation(id: string): {
 
 export function getRoot(): string {
 	return GLON_ROOT;
+}
+
+// Set of every known object id, refreshed via the reader cache. Used by the
+// SSE stream to resolve which on-disk objects a tool call touched.
+export function allObjectIds(): Set<string> {
+	const c = getCache();
+	return new Set(c.perObject.keys());
+}
+
+// All in-context object ids for an agent: scan every block currently in the
+// agent's live context window for UUIDs that match a known object. Used by
+// the cosmos to render context-active balls with a persistent halo.
+export function getAgentContextRefs(agentId: string): { agent: VizObject; objectIds: string[] } | null {
+	const c = getCache();
+	const po = c.perObject.get(agentId);
+	if (!po || po.object.typeKey !== "agent") return null;
+	const classified = classifyAgentBlocks(po);
+	const known = new Set(c.perObject.keys());
+	const refs = new Set<string>();
+	for (const { block, inContext } of classified) {
+		if (!inContext) continue;
+		collectIdsFromBlock(block, known, refs);
+	}
+	// The agent itself is implicitly always in context.
+	refs.delete(agentId);
+	return { agent: po.object, objectIds: [...refs] };
+}
+
+// UUIDs follow the canonical 8-4-4-4-12 hex pattern; this regex matches the
+// shape so we don't have to substring-search every known id in every block.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+function collectIdsFromBlock(block: VizBlock, known: Set<string>, out: Set<string>): void {
+	const hay: string[] = [];
+	if (block.text) hay.push(block.text);
+	if (block.summary) hay.push(block.summary);
+	if (block.toolName) hay.push(block.toolName);
+	if (block.toolInput) hay.push(JSON.stringify(block.toolInput));
+	for (const s of hay) {
+		const matches = s.match(UUID_RE);
+		if (!matches) continue;
+		for (const m of matches) {
+			const lc = m.toLowerCase();
+			if (known.has(lc)) out.add(lc);
+		}
+	}
 }
 
 

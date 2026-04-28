@@ -160,7 +160,7 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 #legend {
 	position: fixed;
 	top: 60px; left: 18px;
-	width: 200px;
+	width: 240px;
 	background: var(--bg-panel);
 	backdrop-filter: blur(10px);
 	border: 1px solid var(--stroke);
@@ -462,3 +462,200 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 .sr-row.live .sr-ctx { background: rgba(94, 234, 212, 0.14); color: var(--accent); }
 .sr-row.compacted .sr-ctx { color: rgba(255,255,255,0.4); }
 .sr-snip { font-size: 12px; color: rgba(255,255,255,0.85); line-height: 1.4; word-break: break-word; }
+
+/* Live event log -------------------------------------- */
+/* Bottom-left console-style panel that tails new glon changes via SSE. */
+#livelog {
+	position: fixed;
+	left: 18px;
+	bottom: 48px;
+	width: 460px;
+	max-height: 320px;
+	display: flex;
+	flex-direction: column;
+	background: var(--bg-panel);
+	backdrop-filter: blur(8px);
+	border: 1px solid var(--stroke);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	z-index: 5;
+	overflow: hidden;
+	transition: max-height 200ms ease;
+}
+#livelog.collapsed { max-height: 32px; }
+#livelog.collapsed .livelog-list { display: none; }
+
+.livelog-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	cursor: pointer;
+	border-bottom: 1px solid var(--stroke);
+	user-select: none;
+	flex: 0 0 auto;
+}
+#livelog.collapsed .livelog-header { border-bottom-color: transparent; }
+
+.livelog-dot {
+	width: 8px; height: 8px;
+	border-radius: 50%;
+	background: var(--text-dim);
+	transition: background 200ms, box-shadow 200ms;
+}
+#livelog.connected .livelog-dot {
+	background: var(--accent);
+	box-shadow: 0 0 6px rgba(94, 234, 212, 0.7);
+	animation: livelog-pulse 1.6s ease-in-out infinite;
+}
+#livelog.error .livelog-dot { background: var(--err); box-shadow: 0 0 6px rgba(255, 107, 122, 0.6); }
+@keyframes livelog-pulse {
+	0%, 100% { box-shadow: 0 0 4px rgba(94, 234, 212, 0.4); }
+	50%      { box-shadow: 0 0 10px rgba(94, 234, 212, 0.85); }
+}
+.livelog-title { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text); }
+.livelog-status { font: 10px ui-monospace, monospace; color: var(--text-muted); }
+.livelog-count { margin-left: auto; font: 10px ui-monospace, monospace; }
+.livelog-clear {
+	font: 10px ui-monospace, monospace;
+	padding: 2px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--stroke);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+.livelog-clear:hover { color: var(--text); border-color: var(--stroke-strong); }
+
+.livelog-list {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	font: 11px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+	padding: 6px 0;
+}
+.livelog-list::-webkit-scrollbar { width: 6px; }
+.livelog-list::-webkit-scrollbar-thumb { background: var(--stroke-strong); border-radius: 3px; }
+
+.livelog-row {
+	display: grid;
+	grid-template-columns: 56px auto 1fr;
+	gap: 8px;
+	padding: 2px 12px;
+	white-space: nowrap;
+	cursor: pointer;
+	border-left: 2px solid transparent;
+}
+.livelog-row:hover { background: rgba(255, 255, 255, 0.04); border-left-color: var(--stroke-strong); }
+.livelog-row.fresh { animation: livelog-flash 1.2s ease-out; }
+@keyframes livelog-flash {
+	from { background: rgba(94, 234, 212, 0.18); }
+	to   { background: transparent; }
+}
+.livelog-time { color: var(--text-dim); }
+.livelog-actor { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.livelog-actor.agent { color: var(--accent); }
+.livelog-actor.peer  { color: var(--warn); }
+.livelog-body { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.livelog-kind { font-weight: 600; margin-right: 6px; }
+.livelog-kind.tool_use      { color: #ffc857; }
+.livelog-kind.tool_result   { color: #7ae582; }
+.livelog-kind.tool_error    { color: #ff5b6b; }
+.livelog-kind.user_text     { color: #4dd4ff; }
+.livelog-kind.assistant_text{ color: #ff7ad6; }
+.livelog-kind.compaction    { color: #b197fc; }
+.livelog-kind.create        { color: var(--accent); }
+.livelog-kind.field         { color: var(--text-muted); }
+.livelog-kind.delete        { color: var(--err); }
+.livelog-preview { color: rgba(255, 255, 255, 0.65); }
+.livelog-empty { padding: 14px; text-align: center; color: var(--text-dim); font-size: 11px; }
+
+/* Activity heat indicator in the legend. */
+.heat-strip {
+	position: relative;
+	height: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 6px;
+	border-radius: 4px;
+	margin-bottom: 4px;
+}
+.heat-strip-bar {
+	position: absolute;
+	inset: 4px 0;
+	border-radius: 4px;
+	background: linear-gradient(90deg, #1c2130 0%, #5b6377 35%, #5eead4 70%, #ffc857 100%);
+	box-shadow: 0 0 8px rgba(94, 234, 212, 0.25);
+	opacity: 0.9;
+}
+.heat-strip-tick {
+	position: relative;
+	z-index: 1;
+	color: rgba(255, 255, 255, 0.85);
+	mix-blend-mode: difference;
+}
+
+/* AI jobs panel: one row per agent with context-window fill bar. */
+.jobs-list {
+	list-style: none;
+	margin: 0 0 4px;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+#legend .job-row {
+	display: grid;
+	grid-template-columns: 10px 1fr;
+	grid-template-rows: auto auto auto;
+	grid-template-areas:
+		"dot  name"
+		"meta meta"
+		"bar  bar";
+	gap: 2px 8px;
+	align-items: center;
+	padding: 7px 9px;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.02);
+	border: 1px solid var(--stroke);
+	cursor: pointer;
+	transition: background 120ms, border-color 120ms;
+}
+.job-row:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--stroke-strong); }
+.job-row.empty { cursor: default; color: var(--text-dim); justify-content: center; display: block; text-align: center; padding: 8px; }
+.job-dot {
+	grid-area: dot;
+	width: 8px; height: 8px;
+	border-radius: 50%;
+	background: var(--text-dim);
+}
+.job-row.active .job-dot {
+	background: var(--accent);
+	box-shadow: 0 0 6px rgba(94, 234, 212, 0.7);
+	animation: livelog-pulse 1.6s ease-in-out infinite;
+}
+.job-name { grid-area: name; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-meta { grid-area: meta; min-width: 0; font: 10px ui-monospace, monospace; padding-left: 18px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-bar { grid-area: bar; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+.job-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 65%, var(--warn) 85%, var(--err) 100%);
+	transition: width 600ms ease;
+}
+.job-bar-label { display: none; }
+
+/* Reminder rows in the AI Jobs panel: status color drives the dot + bar. */
+#legend .job-row.reminder.pending .job-dot {
+	background: var(--warn);
+	box-shadow: 0 0 6px rgba(255, 200, 87, 0.6);
+	animation: livelog-pulse 2.0s ease-in-out infinite;
+}
+#legend .job-row.reminder.pending .job-bar-fill {
+	background: linear-gradient(90deg, rgba(94, 234, 212, 0.9), var(--warn));
+}
+#legend .job-row.reminder.status-sent .job-dot      { background: var(--text-muted); }
+#legend .job-row.reminder.status-sent .job-bar-fill { background: rgba(255, 255, 255, 0.18); }
+#legend .job-row.reminder.status-failed .job-dot      { background: var(--err); box-shadow: 0 0 6px rgba(255, 107, 122, 0.6); }
+#legend .job-row.reminder.status-failed .job-bar-fill { background: var(--err); }
+#legend .job-row.reminder.status-cancelled .job-dot      { background: var(--text-dim); }
+#legend .job-row.reminder.status-cancelled .job-bar-fill { background: var(--stroke-strong); }

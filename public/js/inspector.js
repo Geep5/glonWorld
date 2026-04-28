@@ -14,7 +14,6 @@ const els = {
 	subtitle: document.getElementById("insp-subtitle"),
 	agentSection: document.getElementById("insp-agent-section"),
 	agentStats: document.getElementById("insp-agent-stats"),
-	enterAgent: document.getElementById("btn-enter-agent"),
 	scalarsSection: document.getElementById("insp-scalars-section"),
 	scalars: document.getElementById("insp-scalars"),
 	linksSection: document.getElementById("insp-links-section"),
@@ -30,11 +29,57 @@ const els = {
 
 let handlers = {};
 
-export function bindInspector({ onNavigate, onEnterAgent }) {
-	handlers = { onNavigate, onEnterAgent };
-	els.enterAgent.addEventListener("click", () => {
-		if (handlers.onEnterAgent && currentId) handlers.onEnterAgent(currentId);
+export function bindInspector({ onNavigate, onInject }) {
+	handlers = { onNavigate, onInject };
+}
+
+let contextState = { agentId: null, contextIds: new Set() };
+// Called by main.js whenever the in-context set is refreshed so the inspect
+// button can flip between 'inject' and 'already in context'.
+export function setContextState(next) {
+	contextState = next;
+	if (currentId) renderInjectSection();
+}
+
+function renderInjectSection() {
+	const host = document.getElementById("insp-inject");
+	if (!host) return;
+	host.innerHTML = "";
+	if (!currentId || !contextState.agentId) return;
+	if (currentId === contextState.agentId) return;       // the agent itself
+	const inContext = contextState.contextIds.has(currentId);
+	if (inContext) {
+		const note = document.createElement("div");
+		note.className = "insp-context-note";
+		note.textContent = "\u2713 currently in agent context";
+		host.appendChild(note);
+		return;
+	}
+	const btn = document.createElement("button");
+	btn.className = "recall-btn";
+	btn.textContent = "\u2192 Inject into context";
+	btn.title = "Post a user_text describing this object so the agent's next turn sees it.";
+	btn.addEventListener("click", async () => {
+		btn.disabled = true;
+		btn.textContent = "Injecting\u2026";
+		try {
+			const objectId = currentId;
+			const r = await fetch(`/api/agents/${encodeURIComponent(contextState.agentId)}/inject/${encodeURIComponent(objectId)}`, { method: "POST" });
+			const data = await r.json();
+			if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+			btn.textContent = "Injected \u2713 (agent will reply on next turn)";
+			btn.classList.add("ok");
+			handlers.onInject?.(objectId);
+		} catch (err) {
+			btn.textContent = `Inject failed: ${err?.message ?? err}`;
+			btn.classList.add("err");
+		}
 	});
+	host.appendChild(btn);
+	const note = document.createElement("div");
+	note.className = "recall-note";
+	note.textContent = "This object isn't in the agent's current context. Inject posts a user_text reference so the next assistant turn can see it.";
+	host.appendChild(note);
 }
 
 let currentId = null;
@@ -62,7 +107,7 @@ export function setLanding(state) {
 		hint.style.marginTop = "14px";
 		hint.style.fontSize = "12px";
 		hint.style.color = "var(--accent)";
-		hint.textContent = `Tip: click "Agent" in the top-right or double-click the bright node to enter ${agent.name ?? "the agent"}.`;
+		hint.textContent = `Tip: click ${agent.name ?? "the agent"} (the bright glowing node) to inspect, or click any other ball to see what it is. Activity heat fades over a minute.`;
 		els.empty.appendChild(hint);
 	}
 }
@@ -159,6 +204,8 @@ function render(detail, changesResponse) {
 	} else {
 		els.contentSection.hidden = true;
 	}
+
+	renderInjectSection();
 
 	// Changes DAG (mini) ----------------------------------------
 	const changes = changesResponse.changes ?? [];
