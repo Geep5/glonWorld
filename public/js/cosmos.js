@@ -216,16 +216,7 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
-	// Rings (subtle orbital guides) -------------------------------
-	const drawnRadii = new Set();
-	for (const [typeKey, list] of byType) {
-		const { radius } = layoutForType(typeKey);
-		if (radius === 0) continue;
-		if (drawnRadii.has(radius)) continue;
-		drawnRadii.add(radius);
-		const ring = makeRing(radius, new THREE.Color("#1c2130"));
-		group.add(ring);
-	}
+
 
 	// Links --------------------------------------------------------
 	const linkMeshes = [];
@@ -355,14 +346,3 @@ export function buildCosmos(state, materials) {
 	return { group, nodes, positions, linkMeshes, tick, bumpHeat, setContextActive };
 }
 
-function makeRing(radius, color) {
-	const segments = 128;
-	const pts = [];
-	for (let i = 0; i <= segments; i++) {
-		const t = (i / segments) * Math.PI * 2;
-		pts.push(new THREE.Vector3(Math.cos(t) * radius, 0, Math.sin(t) * radius));
-	}
-	const geom = new THREE.BufferGeometry().setFromPoints(pts);
-	const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.35 });
-	return new THREE.LineLoop(geom, mat);
-}
