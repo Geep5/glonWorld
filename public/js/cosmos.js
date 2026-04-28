@@ -247,6 +247,27 @@ export function buildCosmos(state, materials) {
 		linkMeshes.push(mesh);
 	}
 
+	// Selection indicator: a single dedicated mesh that snaps to whichever
+	// ball is currently selected. Renders on top (depthTest off) so it's
+	// visible even when the ball sits inside the agent halo. White-ish so
+	// it's distinct from any type color or context halo.
+	const selectionHalo = new THREE.Mesh(
+		materials.halo,
+		new THREE.MeshBasicMaterial({
+			color: 0xffffff,
+			transparent: true,
+			opacity: 0.0,
+			side: THREE.BackSide,
+			depthWrite: false,
+			depthTest: false,
+		}),
+	);
+	selectionHalo.renderOrder = 999;
+	selectionHalo.visible = false;
+	selectionHalo.userData = { kind: "selection-halo" };
+	group.add(selectionHalo);
+	let selectedId = null;
+
 	// ── Per-frame float + tube re-anchoring ────────────────────
 	// Every ball drifts independently on x/y/z via id-seeded sin waves;
 	// no global rotation. Tube geometries follow the moving endpoints.
@@ -273,6 +294,13 @@ export function buildCosmos(state, materials) {
 		for (const [id, o] of orbits) {
 			o.contextActive = idSet.has(id);
 		}
+	}
+
+	// Drive the white selection halo to the currently-selected ball. Pass null
+	// to clear it.
+	function setSelected(id) {
+		selectedId = id ?? null;
+		selectionHalo.visible = !!selectedId && nodes.has(selectedId);
 	}
 
 	function tick(elapsedSec, cursorRay) {
@@ -322,6 +350,20 @@ export function buildCosmos(state, materials) {
 			node.halo.material.opacity = o.baseHaloOpacity + (o.contextActive ? CONTEXT_HALO : 0) + heat * HEAT_HALO_BOOST;
 			node.halo.scale.setScalar(o.haloScale * pulseScale * ctxScale);
 		}
+		// Selection halo follows the selected ball, with a slow brightness pulse so
+		// it reads as a deliberate marker rather than a stuck halo.
+		if (selectedId) {
+			const sel = nodes.get(selectedId);
+			const selOrbit = orbits.get(selectedId);
+			if (sel && selOrbit) {
+				selectionHalo.position.copy(sel.mesh.position);
+				const pulse = 0.85 + Math.sin(elapsedSec * 2.4) * 0.15;
+				selectionHalo.scale.setScalar(selOrbit.baseRadius * 2.6 * pulse);
+				selectionHalo.material.opacity = 0.32 + Math.sin(elapsedSec * 2.4) * 0.08;
+			} else {
+				selectionHalo.visible = false;
+			}
+		}
 		for (const m of linkMeshes) {
 			const link = m.userData.link;
 			const a = positions.get(link.sourceId);
@@ -343,6 +385,6 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
-	return { group, nodes, positions, linkMeshes, tick, bumpHeat, setContextActive };
+	return { group, nodes, positions, linkMeshes, tick, bumpHeat, setContextActive, setSelected };
 }
 

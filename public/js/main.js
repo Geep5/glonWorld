@@ -300,6 +300,10 @@ function renderReminderRow(r) {
 	const created = Number(sc.created_at_ms ?? r.createdAt ?? 0);
 	const status = String(sc.status ?? "pending");
 	const note = String(sc.note ?? sc.channel ?? r.name ?? shortId(r.id));
+	const prompt = extractReminderPrompt(sc.payload);
+	// Title: prefer the actual task prompt over the category label \u2014 the user
+	// has six "Auth-driven job scheduler" reminders that only differ in payload.
+	const title = prompt || note;
 	const pending = fire > now && status !== "sent" && status !== "cancelled" && status !== "failed";
 	const total = Math.max(1, fire - created);
 	const elapsed = Math.max(0, Math.min(total, now - created));
@@ -314,18 +318,38 @@ function renderReminderRow(r) {
 	}
 	const li = document.createElement("li");
 	li.className = `job-row reminder status-${status}` + (pending ? " pending" : "");
-	li.title = `${note}\nstatus: ${status}\nfire_at: ${new Date(fire).toLocaleString()}\ncreated: ${new Date(created).toLocaleString()}`;
+	const tooltipLines = [
+		note && note !== title ? `${note}` : null,
+		prompt && prompt !== title ? `prompt: ${prompt}` : null,
+		`status: ${status}`,
+		`fire_at: ${new Date(fire).toLocaleString()}`,
+		`created: ${new Date(created).toLocaleString()}`,
+	].filter(Boolean);
+	li.title = tooltipLines.join("\n");
 	li.dataset.kind = "reminder";
 	li.dataset.fire = String(fire);
 	li.dataset.created = String(created);
 	li.innerHTML = `
 		<span class="job-dot"></span>
-		<span class="job-name">${escapeHtml(note)}</span>
+		<span class="job-name">${escapeHtml(title)}</span>
 		<span class="job-meta">${meta}</span>
 		<div class="job-bar"><div class="job-bar-fill" style="width:${pct}%"></div></div>
 	`;
 	li.addEventListener("click", () => select(r.id, { focus: true }));
 	return li;
+}
+
+// Reminders carry their actual task description in `payload`, which is a
+// JSON string whose value is itself a JSON object \u2014 typically `{"prompt":"..."}`.
+// Two unwraps gets us the prompt; absence on either layer yields "".
+function extractReminderPrompt(raw) {
+	if (raw == null) return "";
+	let v = raw;
+	for (let i = 0; i < 2 && typeof v === "string"; i++) {
+		try { v = JSON.parse(v); } catch { return ""; }
+	}
+	if (v && typeof v === "object" && typeof v.prompt === "string") return v.prompt;
+	return "";
 }
 
 // Friendly forward-duration formatter used for fires-in countdowns.
@@ -532,13 +556,7 @@ function focusOnId(id) {
 }
 
 function highlightSelected() {
-	for (const [id, node] of cosmosCtx.nodes) {
-		const active = id === selectedId;
-		if (node.mesh.material && node.mesh.material.emissiveIntensity !== undefined) {
-			const base = node.mesh.userData.obj.typeKey === "agent" ? 0.9 : 0.35;
-			node.mesh.material.emissiveIntensity = active ? 1.4 : base;
-		}
-	}
+	cosmosCtx?.setSelected?.(selectedId);
 }
 
 function showBlockInInspector(block, agentId) {
