@@ -2,7 +2,16 @@
 
 Live 3D dashboard for a **[glon](https://github.com/Geep5/glon)** environment. One scene, one view: every object on disk is a ball; every change-file write becomes a glow, a halo, or a row in the live console.
 
-![cosmos view](./snapshots/cosmos-final.png)
+![Cosmos with live log, AI jobs panel, and inject button](./snapshots/hero.png)
+
+<details>
+<summary>more screenshots</summary>
+
+![idle cosmos with the AI Jobs panel and the activity heat strip](./snapshots/cosmos.png)
+
+![SSE event log open, streaming tool calls](./snapshots/livelog.png)
+
+</details>
 
 ## What you see
 
