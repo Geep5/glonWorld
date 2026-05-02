@@ -3,7 +3,8 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>glonWorld</title>
+	<title>glonSystem</title>
+	<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪐</text></svg>" />
 	<link rel="stylesheet" href="./style.css" />
 
 	<script type="importmap">
@@ -19,11 +20,12 @@
 <body>
 	<canvas id="scene"></canvas>
 	<div id="search-results" class="search-results" hidden></div>
+	<div id="grid-overlay" aria-hidden="true"></div>
 
 	<header id="top">
 		<div class="brand">
 			<span class="mark"></span>
-			<span class="name">glon<span class="name-world">World</span></span>
+			<span class="name">glon<span class="name-system">System</span></span>
 			<span class="sep">·</span>
 			<span id="root-path" class="root">loading…</span>
 		</div>
@@ -33,6 +35,7 @@
 	</header>
 
 	<aside id="legend">
+		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
 		<h3>Types</h3>
 		<ul id="legend-list"></ul>
 		<h3>Lineage</h3>
@@ -46,8 +49,6 @@
 			<span class="heat-strip-tick muted small">cold</span>
 			<span class="heat-strip-tick muted small heat-strip-tick-right">hot</span>
 		</div>
-		<h3>AI jobs <span id="jobs-count" class="count"></span></h3>
-		<ul id="jobs-list" class="jobs-list"></ul>
 		<h3>Controls</h3>
 		<ul class="controls">
 			<li><kbd>drag</kbd> orbit</li>
@@ -59,7 +60,14 @@
 		</ul>
 	</aside>
 
+	<aside id="jobs">
+		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
+		<h3>AI jobs <span id="jobs-count" class="count"></span></h3>
+		<ul id="jobs-list" class="jobs-list"></ul>
+	</aside>
+
 	<aside id="inspector">
+		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
 		<div id="inspector-empty" class="inspector-empty">
 			<h2>Select an object</h2>
 			<p>Click any ball to inspect it. The glowing ball is the agent. Activity heat lights up balls touched by recent changes.</p>
@@ -103,6 +111,7 @@
 
 	<aside id="livelog" class="collapsed" aria-label="Live event log">
 		<header class="livelog-header">
+			<span class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</span>
 			<span class="livelog-dot"></span>
 			<span class="livelog-title">live</span>
 			<span id="livelog-status" class="livelog-status"></span>

@@ -1,5 +1,5 @@
 /**
- * glonWorld — HTTP server.
+ * glonSystem — HTTP server.
  *
  * Routes:
  *   GET /api/state                       graph snapshot (objects + links + types + timeline)
@@ -96,7 +96,7 @@ function injectSummary(detail: { object: { id: string; typeKey: string; name?: s
 	const { object: obj, rawFields, contentPreview } = detail;
 	const lines: string[] = [];
 	const label = obj.name ? `"${obj.name}"` : obj.id.slice(0, 8);
-	lines.push(`(glonWorld inject) Reference \u2014 the user wants you aware of this object:`);
+	lines.push(`(glonSystem inject) Reference \u2014 the user wants you aware of this object:`);
 	lines.push(`  type: ${obj.typeKey}`);
 	lines.push(`  name: ${label}`);
 	lines.push(`  id:   ${obj.id}`);
@@ -174,7 +174,7 @@ app.listen(PORT, HOST, () => {
 	const objCount = snap.objects.length;
 	const agentCount = snap.objects.filter((o) => o.typeKey === "agent").length;
 	const programCount = snap.objects.filter((o) => o.typeKey === "program").length;
-	console.log(`glonWorld → http://${HOST}:${PORT}`);
+	console.log(`glonSystem → http://${HOST}:${PORT}`);
 	console.log(`  source: ${snap.rootPath}`);
 	console.log(`  loaded: ${objCount} objects (${programCount} programs, ${agentCount} agents) with ${snap.links.length} links`);
 	startWatcher();

@@ -1,5 +1,5 @@
 /**
- * glonWorld — bootstrap.
+ * glonSystem — bootstrap.
  *
  * Responsibilities:
  *   - Fetch the graph snapshot + pick an agent to feature
@@ -12,6 +12,9 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass }     from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { buildCosmos } from "./cosmos.js";
 import { colorForType } from "./colors.js";
 import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
@@ -21,7 +24,7 @@ import { setupLiveLog } from "./livelog.js";
 
 let snapshot = null;
 
-let scene, camera, renderer, controls;
+let scene, camera, renderer, composer, controls;
 let cosmosCtx;
 let pickables = [];         // meshes the raycaster considers
 let selectedId = null;
@@ -33,9 +36,11 @@ let contextAgentId = null;
 
 // Shared reusable geometries + materials.
 const materials = {
-	sphere: new THREE.SphereGeometry(1, 32, 24),     // high-detail (featured nodes)
-	sphereSmall: new THREE.SphereGeometry(1, 14, 10), // low-detail (blocks, many instances)
-	halo: new THREE.SphereGeometry(1, 24, 18),
+	// Higher-poly spheres so the procedural surface texture and directional
+	// sun lighting render smoothly without faceting on close-up balls.
+	sphere:      new THREE.SphereGeometry(1, 48, 32),
+	sphereSmall: new THREE.SphereGeometry(1, 14, 10),
+	halo:        new THREE.SphereGeometry(1, 24, 18),
 };
 
 // ── Init ───────────────────────────────────────────────────────────
@@ -52,24 +57,28 @@ async function init() {
 	agents.sort((a, b) => (b.agentStats?.lastActivity ?? 0) - (a.agentStats?.lastActivity ?? 0));
 	contextAgentId = agents[0]?.id ?? null;
 	setupThree();
+	setupHudGrid(8, 4);
 	buildScenes();
 	bindUI();
 	setupLiveLog({
 		onSelectObject: (id) => select(id, { focus: true }),
 		onEachEvent: (ev) => {
-			// Heat bump for fresh activity.
-			if (Date.now() - ev.ts <= 60_000) {
+			// Live events bump heat on the change's owning object plus every
+			// id its tool input/result mentioned. Replay events (the ~50 sent
+			// on connect for context) skip this — their decay would already
+			// be invisible and they'd otherwise paint stale activity as live.
+			if (!ev.replay) {
 				cosmosCtx?.bumpHeat?.(ev.objectId, ev.ts);
 				for (const id of ev.referencedObjects ?? []) {
 					cosmosCtx?.bumpHeat?.(id, ev.ts);
 				}
+				// Any live change on the watched agent or one that references
+				// objects can shift the in-context set; refresh it (debounced).
+				const affectsContext =
+					ev.objectId === contextAgentId ||
+					(ev.referencedObjects ?? []).length > 0;
+				if (affectsContext) scheduleContextRefresh();
 			}
-			// Any change on the watched agent or one that references objects
-			// can shift the in-context set; refresh it (debounced).
-			const affectsContext =
-				ev.objectId === contextAgentId ||
-				(ev.referencedObjects ?? []).length > 0;
-			if (affectsContext) scheduleContextRefresh();
 		},
 	});
 	refreshContextActive();
@@ -108,10 +117,15 @@ function setupThree() {
 	renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
 	renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 	renderer.setSize(window.innerWidth, window.innerHeight);
-	renderer.setClearColor(0x05060a, 1);
+	renderer.setClearColor(0x000000, 1);
+	// Cinematic tone curve + sRGB output give the textured planets the same
+	// rich falloff a real solar-system viewer has.
+	renderer.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer.toneMappingExposure = 1.15;
+	renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 	scene = new THREE.Scene();
-	scene.fog = new THREE.Fog(0x05060a, 50, 140);
+	scene.fog = new THREE.Fog(0x000000, 50, 160);
 
 	camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 400);
 	camera.position.set(0, 25, 60);
@@ -123,17 +137,41 @@ function setupThree() {
 	controls.minDistance = 3;
 	controls.maxDistance = 120;
 
-	// Stars backdrop for depth.
-	scene.add(makeStarfield(1200, 160));
+	// (Spatial reference is provided by a screen-space HUD grid in
+	// public/index.html, not a 3D helper \u2014 the HUD stays put while the
+	// camera orbits, so "section A1" always means the same screen region.
 
-	// Lights — one key light + soft ambient so the agent halo stays readable.
-	scene.add(new THREE.AmbientLight(0x404a62, 0.8));
-	const key = new THREE.PointLight(0xffffff, 1.4, 200);
-	key.position.set(20, 30, 20);
-	scene.add(key);
-	const rim = new THREE.PointLight(0x5eead4, 1.2, 80);
-	rim.position.set(0, 0, 0);
-	scene.add(rim);
+	// Lighting model: Graice IS the sun. A single bright PointLight sits
+	// where the agent ball lives (origin) and lights every other ball from
+	// the inside-out, so the day/night terminator naturally points away from
+	// Graice. Ambient is low so dark sides stay dark; no directional fill \u2014
+	// the universe genuinely revolves around the agent.
+	// Tiny ambient: just enough to keep terminator-side detail readable
+	// without lifting the void. Pure black ambient = silhouettes disappear.
+	scene.add(new THREE.AmbientLight(0x1a2030, 0.06));
+	// Graice's surface stays brand-teal-green (emissive map), but the light
+	// it CASTS on planets is warm \u2014 real suns are blackbody emitters around
+	// 5000\u20136000K, which reads as a soft golden cream, not a clinical white.
+	// Decoupling cast color from surface color is the same trick lensflares
+	// use: a green star can still throw warm sunlight on its system.
+	const graiceSun = new THREE.PointLight(0xffe0a8, 5.5, 220, 1.4);
+	graiceSun.position.set(0, 0, 0);
+	scene.add(graiceSun);
+
+	// Bloom postprocessing: Graice's emissive surface punches above the
+	// threshold so it actually glows beyond its geometry. Other balls stay
+	// below the threshold (their emissive baseline is 0.05) unless they're
+	// fresh-heated, at which point they momentarily flare \u2014 a deliberate
+	// secondary cue for live activity.
+	composer = new EffectComposer(renderer);
+	composer.addPass(new RenderPass(scene, camera));
+	const bloom = new UnrealBloomPass(
+		new THREE.Vector2(window.innerWidth, window.innerHeight),
+		0.55,   // strength  (was 1.1)
+		0.55,   // radius    (was 0.7)
+		0.95,   // threshold (was 0.85; raised so heat flashes stay calm)
+	);
+	composer.addPass(bloom);
 
 	window.addEventListener("resize", onResize);
 	canvas.addEventListener("pointermove", onPointerMove);
@@ -235,10 +273,15 @@ function renderJobs(objects) {
 		return pending || (now - fire) <= REMINDER_HISTORY_MS;
 	});
 	jobsRows = [
-		...agents.map((a) => ({ kind: "agent", obj: a, sortKey: a.agentStats.lastActivity ?? 0 })),
-		...reminders.map((r) => ({ kind: "reminder", obj: r, sortKey: reminderSortKey(r) })),
+		...agents.map((a) => ({ kind: "agent", obj: a })),
+		...reminders.map((r) => ({ kind: "reminder", obj: r })),
 	];
-	jobsRows.sort((x, y) => y.sortKey - x.sortKey);
+	for (const row of jobsRows) row.key = jobsSortKey(row, now);
+	// Two-stage sort: tier first (pending \u2192 agents \u2192 past), then within tier
+	// by `sub` ascending. `sub` is `fire` for pending reminders so the next-
+	// to-trigger lands at the very top; for agents and past reminders it's
+	// negated so the most-recently-active surfaces above older ones.
+	jobsRows.sort((x, y) => (x.key.tier - y.key.tier) || (x.key.sub - y.key.sub));
 	countEl.textContent = String(jobsRows.length);
 	host.innerHTML = "";
 	for (const row of jobsRows) {
@@ -280,17 +323,23 @@ function renderAgentRow(a) {
 //   pending  (fire_at in future, status not sent/cancelled/failed)
 //   live     (fire_at \u2264 now but not yet status=sent: actively firing)
 //   sent / failed / cancelled = static, color-coded.
-function reminderSortKey(r) {
-	const sc = r.scalars ?? {};
-	const fire = Number(sc.fire_at_ms ?? 0);
-	const status = sc.status ?? "";
-	const now = Date.now();
-	// Pending future fires float to the top (most imminent first); past ones
-	// rank by recency.
-	if (fire > now && status !== "sent" && status !== "cancelled" && status !== "failed") {
-		return now + (Number.MAX_SAFE_INTEGER - fire); // soonest = highest
+//
+// Sort tiers, top to bottom:
+//   0  pending reminders          \u2014 ascending fire_at_ms (next first)
+//   1  agents                      \u2014 descending lastActivity
+//   2  past/cancelled reminders    \u2014 descending fire_at_ms
+// Within tier 0 the row at the very top is the next thing about to trigger.
+function jobsSortKey(row, now) {
+	if (row.kind === "reminder") {
+		const sc = row.obj.scalars ?? {};
+		const fire = Number(sc.fire_at_ms ?? 0);
+		const status = String(sc.status ?? "pending");
+		const pending = fire > now && status !== "sent" && status !== "cancelled" && status !== "failed";
+		if (pending) return { tier: 0, sub: fire };
+		return { tier: 2, sub: -fire };
 	}
-	return fire;
+	const last = row.obj.agentStats?.lastActivity ?? 0;
+	return { tier: 1, sub: -last };
 }
 
 function renderReminderRow(r) {
@@ -440,6 +489,13 @@ function bindUI() {
 		}
 		applyTimeFilter();
 	});
+
+	// Draggable panels --------------------------------------------
+	makeDraggable("legend",    ".panel-grip", "glonSystem.panelPos.legend");
+	makeDraggable("jobs",      ".panel-grip", "glonSystem.panelPos.jobs");
+	makeDraggable("inspector", ".panel-grip", "glonSystem.panelPos.inspector");
+	makeDraggable("livelog",   ".panel-grip", "glonSystem.panelPos.livelog");
+	window.addEventListener("resize", reclampDraggablePanels);
 }
 
 
@@ -838,7 +894,7 @@ function animate() {
 	// Agent: corona breathes, in-context blocks twinkle, blocks lean toward the cursor.
 
 	controls.update();
-	renderer.render(scene, camera);
+	composer.render();
 	drawLabels();
 
 	frameCount++;
@@ -883,31 +939,150 @@ function drawLabels() {
 	}
 }
 
-// ── Stars ─────────────────────────────────────────────────────────
+// \u2500\u2500 HUD reference grid \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-function makeStarfield(count, radius) {
-	const geom = new THREE.BufferGeometry();
-	const positions = new Float32Array(count * 3);
-	for (let i = 0; i < count; i++) {
-		// Uniform points on a sphere shell.
-		const u = Math.random();
-		const v = Math.random();
-		const theta = 2 * Math.PI * u;
-		const phi = Math.acos(2 * v - 1);
-		const r = radius * (0.7 + Math.random() * 0.3);
-		positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-		positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-		positions[i * 3 + 2] = r * Math.cos(phi);
+// Build a fixed cols\u00d7rows screen-space grid the user can use to point
+// out cosmos balls without panning. Cells are addressed `<col><row>`,
+// e.g. `A1` is top-left, `H4` is bottom-right at 8\u00d74. CSS handles the
+// layout via custom properties so this stays the only source of truth
+// for the cell count.
+function setupHudGrid(cols, rows) {
+	const host = document.getElementById("grid-overlay");
+	if (!host) return;
+	host.style.setProperty("--grid-cols", String(cols));
+	host.style.setProperty("--grid-rows", String(rows));
+	host.replaceChildren();
+	for (let r = 0; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			const cell = document.createElement("div");
+			cell.className = "grid-cell";
+			if (c === cols - 1) cell.classList.add("col-last");
+			if (r === rows - 1) cell.classList.add("row-last");
+			const label = document.createElement("span");
+			label.className = "grid-label";
+			label.textContent = `${columnLabel(c)}${r + 1}`;
+			cell.appendChild(label);
+			host.appendChild(cell);
+		}
 	}
-	geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	const mat = new THREE.PointsMaterial({
-		size: 0.6,
-		color: 0xaab3c6,
-		transparent: true,
-		opacity: 0.6,
-		sizeAttenuation: true,
+}
+
+// Spreadsheet-style column label: 0\u2192A, 25\u2192Z, 26\u2192AA, 27\u2192AB.
+function columnLabel(idx) {
+	let s = "";
+	let n = idx;
+	for (;;) {
+		s = String.fromCharCode(65 + (n % 26)) + s;
+		n = Math.floor(n / 26) - 1;
+		if (n < 0) break;
+	}
+	return s;
+}
+
+// \u2500\u2500 Draggable panels \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+// Wire pointer-based drag on `panel`, initiated only from `handle`. The
+// panel keeps its CSS-defined initial position until the first drag, at
+// which point it switches to absolute top/left so subsequent drags can
+// move freely. Position is persisted to localStorage under `storageKey`
+// and restored on next load. Reclamp on viewport resize keeps panels
+// from disappearing when the window shrinks (see reclampDraggablePanels).
+//
+// Constraint: the panel never disappears entirely; we keep at least
+// HANDLE_MARGIN px of the panel on every screen edge so the user can
+// always grab the handle to drag it back.
+const HANDLE_MARGIN = 40;
+const draggablePanels = new Set();
+
+function makeDraggable(panelId, handleSelector, storageKey) {
+	const panel = document.getElementById(panelId);
+	if (!panel) return;
+	const handle = panel.querySelector(handleSelector);
+	if (!handle) return;
+	draggablePanels.add(panel);
+
+	// Restore saved position. We only restore { left, top } \u2014 width and
+	// height stay under CSS control so theme/responsive changes still flow.
+	try {
+		const raw = localStorage.getItem(storageKey);
+		if (raw) {
+			const saved = JSON.parse(raw);
+			if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
+				// Defer one frame so layout is settled before we measure.
+				requestAnimationFrame(() => applyClampedPosition(panel, saved.left, saved.top));
+			}
+		}
+	} catch { /* corrupt entry; ignore */ }
+
+	let pointerId = null;
+	let offsetX = 0;
+	let offsetY = 0;
+
+	handle.addEventListener("pointerdown", (e) => {
+		if (e.button !== 0) return;
+		const rect = panel.getBoundingClientRect();
+		offsetX = e.clientX - rect.left;
+		offsetY = e.clientY - rect.top;
+		// Pin the panel to absolute top/left so subsequent moves are coherent
+		// regardless of which CSS anchor (right/bottom) it started with.
+		applyAbsolutePosition(panel, rect.left, rect.top);
+		pointerId = e.pointerId;
+		handle.setPointerCapture(pointerId);
+		panel.classList.add("panel-dragging");
+		e.preventDefault();
+		e.stopPropagation();
 	});
-	return new THREE.Points(geom, mat);
+
+	handle.addEventListener("pointermove", (e) => {
+		if (e.pointerId !== pointerId) return;
+		applyClampedPosition(panel, e.clientX - offsetX, e.clientY - offsetY);
+	});
+
+	const finish = (e) => {
+		if (e.pointerId !== pointerId) return;
+		if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+		pointerId = null;
+		panel.classList.remove("panel-dragging");
+		const left = parseFloat(panel.style.left);
+		const top  = parseFloat(panel.style.top);
+		if (Number.isFinite(left) && Number.isFinite(top)) {
+			try { localStorage.setItem(storageKey, JSON.stringify({ left, top })); }
+			catch { /* quota / private mode; non-fatal */ }
+		}
+	};
+	handle.addEventListener("pointerup", finish);
+	handle.addEventListener("pointercancel", finish);
+}
+
+function applyAbsolutePosition(panel, left, top) {
+	panel.style.left   = left + "px";
+	panel.style.top    = top  + "px";
+	panel.style.right  = "auto";
+	panel.style.bottom = "auto";
+}
+
+function applyClampedPosition(panel, left, top) {
+	const w = panel.offsetWidth;
+	const h = panel.offsetHeight;
+	const clampedLeft = Math.max(HANDLE_MARGIN - w, Math.min(window.innerWidth  - HANDLE_MARGIN, left));
+	// Keep at least HANDLE_MARGIN of the panel below the top edge so the
+	// grip stays inside the viewport even after a drag-and-resize.
+	const clampedTop  = Math.max(0,                 Math.min(window.innerHeight - HANDLE_MARGIN, top));
+	applyAbsolutePosition(panel, clampedLeft, clampedTop);
+}
+
+// Re-clamp every panel after the viewport resizes so a wide-then-narrow
+// browser doesn't strand a panel off-screen. Only panels that have been
+// dragged at least once participate \u2014 untouched panels keep their CSS-
+// anchored layout (which is itself responsive).
+function reclampDraggablePanels() {
+	for (const panel of draggablePanels) {
+		if (!panel.style.left) continue;
+		const left = parseFloat(panel.style.left);
+		const top  = parseFloat(panel.style.top);
+		if (!Number.isFinite(left) || !Number.isFinite(top)) continue;
+		applyClampedPosition(panel, left, top);
+	}
 }
 
 // ── Utilities ─────────────────────────────────────────────────────
@@ -917,6 +1092,7 @@ function onResize() {
 	const h = window.innerHeight;
 	const dpr = window.devicePixelRatio || 1;
 	renderer.setSize(w, h);
+	composer?.setSize(w, h);
 	camera.aspect = w / h;
 	camera.updateProjectionMatrix();
 	labelCanvas.width = w * dpr;

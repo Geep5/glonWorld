@@ -34,8 +34,10 @@ export function setupLiveLog({ onSelectObject, onEachEvent } = {}) {
 	onEvent  = onEachEvent ?? null;
 
 	header.addEventListener("click", (e) => {
-		// Avoid toggling when the clear button is the click target.
+		// Don't toggle when the click was on the clear button or the drag
+		// grip \u2014 they have their own roles and bubble up to the header.
 		if (e.target === clearBtn) return;
+		if (e.target.closest(".panel-grip")) return;
 		toggle();
 	});
 	clearBtn.addEventListener("click", (e) => {
@@ -97,7 +99,7 @@ function appendRow(ev, op) {
 	countEl.textContent = totalCount > 999 ? `${(totalCount / 1000).toFixed(1)}k` : String(totalCount);
 
 	const row = document.createElement("div");
-	row.className = "livelog-row fresh";
+	row.className = "livelog-row " + (ev.replay ? "replay" : "fresh");
 	row.dataset.objectId = ev.objectId;
 	row.title = formatTooltip(ev, op);
 

@@ -62,6 +62,9 @@ export interface LiveEvent {
 	// bumps heat on every entry so a search/list/get tool call lights up the
 	// cosmos balls it touched, not just the agent.
 	referencedObjects?: string[];
+	// True for events sent during the replay-on-connect prefix; live events
+	// omit it. Stamped at send time, not stored on the ring.
+	replay?: boolean;
 }
 
 const ring: LiveEvent[] = [];
@@ -291,10 +294,12 @@ export function streamEvents(res: Response): void {
 		"X-Accel-Buffering": "no",
 	});
 	res.flushHeaders();
-	// Replay recent events so a fresh connect has context.
+	// Replay recent events so a fresh connect has context. Tag them so the
+	// client can render them muted and skip side-effects (heat bumps,
+	// context-set refresh) that only make sense for live activity.
 	const replay = ring.slice(-REPLAY_ON_CONNECT);
 	for (const ev of replay) {
-		res.write(`data: ${JSON.stringify(ev)}\n\n`);
+		res.write(`data: ${JSON.stringify({ ...ev, replay: true })}\n\n`);
 	}
 	const onEvent = (ev: LiveEvent) => {
 		// `res.write` returns false when the kernel buffer is full; SSE
