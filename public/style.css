@@ -238,13 +238,12 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 .panel-grip {
 	cursor: move;
 	user-select: none;
-	color: var(--text-dim);
-	opacity: 0.45;
+	color: var(--text-muted);
 	letter-spacing: -1px;
-	font: 12px/1 ui-monospace, "SF Mono", Menlo, monospace;
-	transition: opacity .15s, color .15s;
+	font: 14px/1 ui-monospace, "SF Mono", Menlo, monospace;
+	transition: color .15s;
 }
-.panel-grip:hover  { opacity: 1; color: var(--text-muted); }
+.panel-grip:hover  { color: var(--text); }
 .panel-grip:active { cursor: grabbing; }
 #legend > .panel-grip,
 #jobs > .panel-grip,
