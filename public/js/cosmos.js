@@ -203,17 +203,15 @@ const CONTEXT_SCALE  = 1.18;       // 18% larger when in-context
 const PUSH_LERP    = 0.20;
 const PUSH_PADDING = 0.15;
 
-// Build a dashed-wireframe halo as a Group of LineLoops (latitude rings)
-// and Lines (longitude meridians) sharing one LineDashedMaterial. Each
-// great circle is its own continuous polyline so the line-distance
-// attribute accumulates around the full circle \u2014 only that gives a clean
-// dash pattern. computeLineDistances() runs once per polyline at unit
-// radius; subsequent scaling of the group preserves the dash count per
-// circle (both lineDistance and dashSize live in geometry space).
+// Build a dashed equator ring as a LineLoop on a LineDashedMaterial. The
+// loop's continuous polyline lets line-distance accumulate around the full
+// circle so the dash pattern reads cleanly. computeLineDistances() runs
+// once at unit radius; subsequent scaling of the group preserves the dash
+// count (both lineDistance and dashSize live in geometry space).
 //
 // Returns `{ group, material }` so the per-frame tick can lerp opacity on
 // the shared material with a single assignment.
-function makeDashedHalo({ lats, lons, color, dashSize, gapSize }) {
+function makeDashedRing({ color, dashSize, gapSize }) {
 	const SEG = 96;
 	const material = new THREE.LineDashedMaterial({
 		color,
@@ -225,41 +223,18 @@ function makeDashedHalo({ lats, lons, color, dashSize, gapSize }) {
 	});
 	const group = new THREE.Group();
 
-	// Latitude rings (closed \u2014 use LineLoop so the seam dash is correct).
-	for (let i = 1; i < lats; i++) {
-		const phi = (i / lats) * Math.PI;
-		const r   = Math.sin(phi);
-		const y   = Math.cos(phi);
-		const pos = new Float32Array(SEG * 3);
-		for (let j = 0; j < SEG; j++) {
-			const t = (j / SEG) * Math.PI * 2;
-			pos[j * 3]     = r * Math.cos(t);
-			pos[j * 3 + 1] = y;
-			pos[j * 3 + 2] = r * Math.sin(t);
-		}
-		const geom = new THREE.BufferGeometry();
-		geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-		const ring = new THREE.LineLoop(geom, material);
-		ring.computeLineDistances();
-		group.add(ring);
+	const pos = new Float32Array(SEG * 3);
+	for (let j = 0; j < SEG; j++) {
+		const t = (j / SEG) * Math.PI * 2;
+		pos[j * 3]     = Math.cos(t);
+		pos[j * 3 + 1] = 0;
+		pos[j * 3 + 2] = Math.sin(t);
 	}
-
-	// Longitude meridians (open polylines pole to pole).
-	for (let i = 0; i < lons; i++) {
-		const theta = (i / lons) * Math.PI * 2;
-		const pos = new Float32Array((SEG + 1) * 3);
-		for (let j = 0; j <= SEG; j++) {
-			const phi = (j / SEG) * Math.PI;
-			pos[j * 3]     = Math.sin(phi) * Math.cos(theta);
-			pos[j * 3 + 1] = Math.cos(phi);
-			pos[j * 3 + 2] = Math.sin(phi) * Math.sin(theta);
-		}
-		const geom = new THREE.BufferGeometry();
-		geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-		const meridian = new THREE.Line(geom, material);
-		meridian.computeLineDistances();
-		group.add(meridian);
-	}
+	const geom = new THREE.BufferGeometry();
+	geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+	const ring = new THREE.LineLoop(geom, material);
+	ring.computeLineDistances();
+	group.add(ring);
 
 	return { group, material };
 }
@@ -401,17 +376,16 @@ export function buildCosmos(state, materials) {
 			mesh.userData = { kind: "object", id: obj.id, typeKey, obj };
 			group.add(mesh);
 
-			// Every ball gets one indicator halo \u2014 dashed great-circle wireframe.
+			// Every ball gets one indicator halo — a dashed equator ring.
 			// Opacity in tick sums three contributions:
-			//   - featured base (Graice's persistent "working sphere")
+			//   - featured base (Graice's persistent "working ring")
 			//   - context-active boost (ball is in the agent's live context)
 			//   - heat boost (transient flash on a recent change)
 			// Heat-only balls remain invisible at rest because all three terms
 			// are zero unless something happens.
 			const baseHaloOpacity = isFeatured ? 0.32 : 0.0;
 			const haloScale = isFeatured ? r * 3.2 : r * 2.1;
-			const { group: halo, material: haloMat } = makeDashedHalo({
-				lats: 4, lons: 6,
+			const { group: halo, material: haloMat } = makeDashedRing({
 				color,
 				dashSize: 0.10,
 				gapSize:  0.06,
@@ -658,7 +632,6 @@ export function buildCosmos(state, materials) {
 			// scale follows the same pulse + context multipliers as the ball.
 			node.halo.position.set(x, y, z);
 			node.halo.scale.setScalar(o.haloScale * pulseScale * ctxScale);
-			node.halo.rotation.y = elapsedSec * 0.12;
 			const isSelected = id === selectedId;
 			// One sin wave drives both the opacity bump and the dash-length
 			// undulation when selected, so the breathing reads as a single,
