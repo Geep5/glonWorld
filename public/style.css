@@ -174,7 +174,7 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	box-shadow: 0 0 14px rgba(94,234,212,.5);
 }
 .brand .name { letter-spacing: .4px; }
-.brand .name-system { color: var(--accent); font-weight: 600; }
+.brand .name-astrolabe { color: var(--accent); font-weight: 600; }
 .brand .sep { color: var(--text-dim); }
 .brand .root {
 	color: var(--text-muted);
