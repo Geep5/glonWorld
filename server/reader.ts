@@ -428,9 +428,9 @@ function loadAll(): Map<string, PerObject> {
 //      the shell, which also leaves the system prompt bleeding into the
 //      `name` field.
 //
-// Set GLON_SYSTEM_JUNK_FILTER=0 to disable.
+// Set GLON_ASTROLABE_JUNK_FILTER=0 to disable.
 
-const JUNK_ENABLED = process.env.GLON_SYSTEM_JUNK_FILTER !== "0";
+const JUNK_ENABLED = process.env.GLON_ASTROLABE_JUNK_FILTER !== "0";
 
 function junkReason(po: PerObject): string | null {
 	const { state } = po;
@@ -456,7 +456,7 @@ function filterJunk(all: Map<string, PerObject>): Map<string, PerObject> {
 		}
 		result.set(po.object.id, po);
 	}
-	if (dropped > 0) console.log(`  junk: filtered ${dropped} malformed object(s); set GLON_SYSTEM_JUNK_FILTER=0 to disable`);
+	if (dropped > 0) console.log(`  junk: filtered ${dropped} malformed object(s); set GLON_ASTROLABE_JUNK_FILTER=0 to disable`);
 	return result;
 }
 
@@ -467,9 +467,9 @@ function filterJunk(all: Map<string, PerObject>): Map<string, PerObject> {
 // DAG stores them as distinct objects (glon identifies by object-id, not by content). For
 // the viz, we collapse groups with matching identity signatures and
 // keep the most-active member (max changeCount, tie-break on updatedAt).
-// Set GLON_SYSTEM_DEDUPE=0 to disable.
+// Set GLON_ASTROLABE_DEDUPE=0 to disable.
 
-const DEDUPE_ENABLED = process.env.GLON_SYSTEM_DEDUPE !== "0";
+const DEDUPE_ENABLED = process.env.GLON_ASTROLABE_DEDUPE !== "0";
 
 function dedupeSignature(po: PerObject): string | null {
 	const { state } = po;
@@ -522,7 +522,7 @@ function dedupePerObject(all: Map<string, PerObject>): Map<string, PerObject> {
 			console.log(`  dedupe: kept ${winner.object.typeKey}:${winner.object.id.slice(0, 8)} (changes=${winner.object.changeCount}), dropped ${losers.join(", ")}`);
 		}
 	}
-	if (dropped > 0) console.log(`  dedupe: filtered ${dropped} duplicate object(s); set GLON_SYSTEM_DEDUPE=0 to disable`);
+	if (dropped > 0) console.log(`  dedupe: filtered ${dropped} duplicate object(s); set GLON_ASTROLABE_DEDUPE=0 to disable`);
 	return result;
 }
 

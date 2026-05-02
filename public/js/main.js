@@ -1,5 +1,5 @@
 /**
- * glonSystem — bootstrap.
+ * glonAstrolabe — bootstrap.
  *
  * Responsibilities:
  *   - Fetch the graph snapshot + pick an agent to feature
@@ -491,10 +491,10 @@ function bindUI() {
 	});
 
 	// Draggable panels --------------------------------------------
-	makeDraggable("legend",    ".panel-grip", "glonSystem.panelPos.legend");
-	makeDraggable("jobs",      ".panel-grip", "glonSystem.panelPos.jobs");
-	makeDraggable("inspector", ".panel-grip", "glonSystem.panelPos.inspector");
-	makeDraggable("livelog",   ".panel-grip", "glonSystem.panelPos.livelog");
+	makeDraggable("legend",    ".panel-grip", "glonAstrolabe.panelPos.legend");
+	makeDraggable("jobs",      ".panel-grip", "glonAstrolabe.panelPos.jobs");
+	makeDraggable("inspector", ".panel-grip", "glonAstrolabe.panelPos.inspector");
+	makeDraggable("livelog",   ".panel-grip", "glonAstrolabe.panelPos.livelog");
 	window.addEventListener("resize", reclampDraggablePanels);
 }
 

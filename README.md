@@ -1,4 +1,4 @@
-# glonSystem
+# glonAstrolabe
 
 Live 3D dashboard for a **[glon](https://github.com/Geep5/glon)** environment. One scene, one view: every object on disk is a ball; every change-file write becomes a glow, a halo, or a row in the live console.
 
@@ -42,7 +42,7 @@ Live 3D dashboard for a **[glon](https://github.com/Geep5/glon)** environment. O
 ## How it works
 
 ```
-~/.glon/changes/                  glonSystem server (Node / Express)
+~/.glon/changes/                  glonAstrolabe server (Node / Express)
 ├ <object-id>/                →   decodeChange()  →  computeState()
 │ ├ <hex>.pb   (Change)            ↓
 │ ├ <hex>.pb                       derive: VizObject + agentStats + outLinks + memoryRefs
@@ -63,8 +63,8 @@ The **mutation paths** (`POST /api/agents/:id/recall/:blockId` and `POST /api/ag
 
 ### Server-side data hygiene
 
-- **Junk filter** — drops objects with no `typeKey` and agents whose `system` field is suspiciously short. Set `GLON_SYSTEM_JUNK_FILTER=0` to disable.
-- **Dedupe filter** — collapses identity-duplicate peers and agents (same `display_name + kind + email + discord_id` for peers; same `name` for agents). Keeps the member with the highest `changeCount`. Set `GLON_SYSTEM_DEDUPE=0` to disable.
+- **Junk filter** — drops objects with no `typeKey` and agents whose `system` field is suspiciously short. Set `GLON_ASTROLABE_JUNK_FILTER=0` to disable.
+- **Dedupe filter** — collapses identity-duplicate peers and agents (same `display_name + kind + email + discord_id` for peers; same `name` for agents). Keeps the member with the highest `changeCount`. Set `GLON_ASTROLABE_DEDUPE=0` to disable.
 
 Both filters log every drop to the server console on each cache rebuild.
 
@@ -85,13 +85,13 @@ Requires the sibling `../Graice` checkout — the reader imports proto + DAG cod
 | `PORT` | `4173` | bind port |
 | `GLON_DATA` | `~/.glon` | DAG root directory to read from |
 | `GLON_DISPATCH_URL` | `http://127.0.0.1:6430/dispatch` | glon daemon HTTP dispatch (used by recall + inject) |
-| `GLON_SYSTEM_DEDUPE` | unset (on) | set to `0` to show identity-duplicate objects raw |
-| `GLON_SYSTEM_JUNK_FILTER` | unset (on) | set to `0` to keep malformed objects |
+| `GLON_ASTROLABE_DEDUPE` | unset (on) | set to `0` to show identity-duplicate objects raw |
+| `GLON_ASTROLABE_JUNK_FILTER` | unset (on) | set to `0` to keep malformed objects |
 
 ```bash
 GLON_DATA=~/.glon-peer-b npm run dev               # different DAG root
 HOST=0.0.0.0 PORT=8080 npm run dev                  # bind elsewhere
-GLON_SYSTEM_DEDUPE=0 GLON_SYSTEM_JUNK_FILTER=0 npm run dev   # raw mode
+GLON_ASTROLABE_DEDUPE=0 GLON_ASTROLABE_JUNK_FILTER=0 npm run dev   # raw mode
 ```
 
 ## Interactions
@@ -136,7 +136,7 @@ POST /api/agents/:agentId/inject/:objectId     post a user_text describing this 
 ## Layout
 
 ```
-glonSystem/
+glonAstrolabe/
 ├ server/
 │ ├ index.ts     Express + static + SSE + recall + inject + search routes
 │ ├ reader.ts    disk scan + computeState + dedupe/junk filters + agent context refs
