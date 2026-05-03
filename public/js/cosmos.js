@@ -123,7 +123,7 @@ const TYPE_LAYOUT = {
 	reminder:    { radius: 14, y: 0.6,  scale: 0.8 },
 	type:        { radius: 15, y: -0.3, scale: 0.8 },
 	milestone:   { radius: 17, y: 1.0,  scale: 1.0 },
-	program:    { radius: 20, y: 0,    scale: 1.0 },
+"chain.token": { radius: 18, y: 0.5, scale: 1.1 },
 	proto:      { radius: 30, y: 2.0,  scale: 0.9 },
 	typescript: { radius: 30, y: 0,    scale: 0.65 },
 	javascript: { radius: 30, y: 0,    scale: 0.65 },
