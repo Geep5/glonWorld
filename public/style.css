@@ -722,3 +722,92 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 #jobs .job-row.reminder.status-failed .job-bar-fill { background: var(--err); }
 #jobs .job-row.reminder.status-cancelled .job-dot      { background: var(--text-dim); }
 #jobs .job-row.reminder.status-cancelled .job-bar-fill { background: var(--stroke-strong); }
+
+/* ── Crypto panel ─────────────────────────────────────────────── */
+
+#crypto {
+	position: fixed;
+	right: 340px;
+	top: 14px;
+	width: 260px;
+	max-height: calc(100vh - 28px);
+	overflow-y: auto;
+	background: var(--bg-panel);
+	backdrop-filter: blur(12px) saturate(1.2);
+	border: 1px solid var(--stroke);
+	border-radius: var(--radius);
+	padding: 10px 14px;
+	box-shadow: var(--shadow);
+	z-index: 10;
+}
+.crypto-list { list-style: none; margin: 0; padding: 0; }
+.crypto-row {
+	display: grid;
+	grid-template-columns: 10px 1fr auto;
+	gap: 6px;
+	align-items: center;
+	padding: 6px 4px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.crypto-row:hover { background: rgba(255,255,255,0.04); }
+.crypto-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #ffd700;
+}
+.crypto-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crypto-meta { font: 10px ui-monospace, monospace; color: var(--text-muted); }
+.crypto-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--stroke); }
+.crypto-section h4 { margin: 0 0 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.crypto-op {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 4px;
+	padding: 3px 0;
+	font-size: 11px;
+}
+.crypto-op-kind { color: var(--warn); }
+.crypto-op-amount { color: var(--text); font-weight: 600; }
+
+/* ── Token inspector ──────────────────────────────────────────── */
+
+#insp-token-section h4 {
+	margin: 10px 0 4px;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-muted);
+}
+.token-table { display: flex; flex-direction: column; gap: 2px; }
+.token-balance-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 8px;
+	padding: 3px 0;
+	font-size: 11px;
+	border-bottom: 1px solid var(--stroke);
+}
+.token-balance-row:last-child { border-bottom: none; }
+.token-balance-pubkey { font-family: ui-monospace, monospace; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.token-balance-value { color: var(--text); font-weight: 600; }
+.token-balance-wallet { color: var(--accent); font-size: 10px; margin-left: 4px; }
+.token-ops { display: flex; flex-direction: column; gap: 2px; }
+.token-op-row {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 6px;
+	padding: 3px 0;
+	font-size: 11px;
+	border-bottom: 1px solid var(--stroke);
+}
+.token-op-row:last-child { border-bottom: none; }
+.token-op-kind { color: var(--warn); font-weight: 600; }
+.token-op-detail { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.token-op-time { color: var(--text-dim); font-size: 10px; }
+
+.livelog-row.chain {
+	border-left: 2px solid #ffd700;
+	padding-left: 6px;
+}

@@ -16,9 +16,8 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search } from "./reader.js";
+import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getTokenOverview, getWalletPubkeys } from "./reader.js";
 import { startWatcher, streamEvents, recentEvents } from "./events.js";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
@@ -155,6 +154,16 @@ app.post("/api/agents/:id/recall/:blockId", async (req, res) => {
 	} catch (err: any) {
 		res.status(503).json({ error: "could not reach glon daemon", detail: err?.message ?? String(err) });
 	}
+});
+
+// Wallet pubkeys (local-only, read-only)
+app.get("/api/wallet", (_req, res) => {
+	res.json({ pubkeys: [...getWalletPubkeys()] });
+});
+
+// Token overview: all chain.token objects with derived state
+app.get("/api/tokens", (_req, res) => {
+	res.json(getTokenOverview());
 });
 // ── Static: three.js + frontend ────────────────────────────────────
 //

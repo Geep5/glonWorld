@@ -15,8 +15,8 @@ import { watch, type FSWatcher, readFileSync, existsSync } from "node:fs";
 import { join, sep } from "node:path";
 import { homedir } from "node:os";
 import type { Response } from "express";
-import { decodeChange, type Change, type Block } from "../../Graice/src/proto.js";
-import { hexEncode } from "../../Graice/src/crypto.js";
+import { decodeChange, type Change, type Block } from "../../../3/glon/src/proto.js";
+import { hexEncode } from "../../../3/glon/src/crypto.js";
 import { getObjectDetail, allObjectIds } from "./reader.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
@@ -239,6 +239,19 @@ function summarizeBlock(block: Block): EventOp {
 				preview: clip(meta.summary ?? ""),
 				tokensBefore: parseInt(meta.tokens_before ?? "0", 10) || 0,
 			};
+		}
+		if (contentType === "chain.token.op") {
+			const op = meta.op ?? "?";
+			const amt = meta.amount ?? "";
+			const to = meta.to ? shortId(meta.to) : "";
+			const from = meta.from ? shortId(meta.from) : "";
+			const signer = meta.signer ? shortId(meta.signer) : "";
+			let preview = `${op}`;
+			if (amt) preview += ` ${amt}`;
+			if (from) preview += ` from ${from}`;
+			if (to) preview += ` to ${to}`;
+			if (signer) preview += ` (by ${signer})`;
+			return { kind: "block", blockKind: "other", preview: clip(preview) };
 		}
 	}
 	return { kind: "block", blockKind: "other" };

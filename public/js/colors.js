@@ -6,7 +6,7 @@
 import * as THREE from "three";
 
 const FIXED = {
-	agent:      "#5eead4",  // brand accent — the star
+	agent:      "#5eead4",
 	peer:       "#ffc857",
 	program:    "#b197fc",
 	typescript: "#7ab7ff",
@@ -23,6 +23,7 @@ const FIXED = {
 	discord:    "#b7bcf2",
 	gc:         "#a3a3a3",
 	unknown:    "#6b7488",
+	"chain.token": "#ffd700",
 };
 
 function hashHue(s) {

@@ -13,9 +13,10 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../Graice/src/proto.js";
-import { computeState, type ObjectState } from "../../Graice/src/dag/dag.js";
-import { hexEncode } from "../../Graice/src/crypto.js";
+import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../../3/glon/src/proto.js";
+import { computeState, type ObjectState } from "../../../3/glon/src/dag/dag.js";
+import { hexEncode } from "../../../3/glon/src/crypto.js";
+import { type TokenState, replayTokenState, getWalletPubkeys, TOKEN_TYPE_KEY } from "./tokens.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
@@ -332,6 +333,7 @@ interface PerObject {
 	blocks: VizBlock[];
 	tools: VizTool[];
 	outLinks: { targetId: string; relationKey: string; fieldPath: string }[];
+	tokenState?: TokenState;
 }
 
 function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
@@ -353,6 +355,7 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 
 	const tools = state.typeKey === "agent" ? extractToolsField(state.fields.get("tools")) : [];
 	const blocks = state.typeKey === "agent" ? classifyBlocks(state) : [];
+	const tokenState = state.typeKey === TOKEN_TYPE_KEY ? replayTokenState(state.fields, state.blocks) : undefined;
 
 	const object: VizObject = {
 		id: state.id,
@@ -372,7 +375,7 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 		agentStats: state.typeKey === "agent" ? computeAgentStats(state) : undefined,
 	};
 
-	return { object, state, changes, blocks, tools, outLinks };
+	return { object, state, changes, blocks, tools, outLinks, tokenState };
 }
 
 // ── Cache layer ─────────────────────────────────────────────────
@@ -626,6 +629,8 @@ export function getObjectDetail(id: string): {
 	inLinks: VizLink[];
 	rawFields: Record<string, unknown>;
 	contentPreview?: string;
+	tokenState?: TokenState;
+	walletPubkeys?: string[];
 } | null {
 	const c = getCache();
 	const po = c.perObject.get(id);
@@ -668,7 +673,15 @@ export function getObjectDetail(id: string): {
 		}
 	}
 
-	return { object: po.object, outLinks, inLinks, rawFields, contentPreview };
+	return {
+		object: po.object,
+		outLinks,
+		inLinks,
+		rawFields,
+		contentPreview,
+		...(po.tokenState ? { tokenState: po.tokenState } : {}),
+		walletPubkeys: [...getWalletPubkeys()],
+	};
 }
 
 function normalizeValue(v: Value): unknown {
@@ -924,4 +937,17 @@ export function search(query: string, limit: number = 20): SearchResults {
 	objects.sort((a, b) => b.score - a.score);
 	blocks.sort((a, b) => b.score - a.score || b.timestamp - a.timestamp);
 	return { query, objects: objects.slice(0, limit), blocks: blocks.slice(0, limit) };
+}
+
+export { getWalletPubkeys } from "./tokens.js";
+
+export function getTokenOverview(): { tokens: (VizObject & { tokenState: TokenState })[]; walletPubkeys: string[] } {
+	const c = getCache();
+	const tokens: (VizObject & { tokenState: TokenState })[] = [];
+	for (const po of c.perObject.values()) {
+		if (po.object.typeKey !== TOKEN_TYPE_KEY) continue;
+		if (!po.tokenState) continue;
+		tokens.push({ ...po.object, tokenState: po.tokenState });
+	}
+	return { tokens, walletPubkeys: [...getWalletPubkeys()] };
 }

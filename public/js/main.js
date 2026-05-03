@@ -213,6 +213,7 @@ function buildScenes() {
 		legend.appendChild(li);
 	}
 	renderJobs(snapshot.objects);
+	renderCrypto(snapshot.objects);
 	startJobsRefresh();
 }
 
@@ -227,6 +228,7 @@ function startJobsRefresh() {
 		try {
 			const s = await fetch("/api/state").then((r) => r.json());
 			renderJobs(s.objects);
+			renderCrypto(s.objects);
 		} catch { /* keep last paint on transient error */ }
 	}, JOBS_POLL_MS);
 	// Smooth 1Hz tick to update reminder countdown bars between polls.
@@ -293,6 +295,78 @@ function renderJobs(objects) {
 		li.className = "job-row empty";
 		li.textContent = "no agents or reminders";
 		host.appendChild(li);
+	}
+}
+
+// Crypto panel: tokens + recent chain ops
+async function renderCrypto(objects) {
+	const host = document.getElementById("crypto-list");
+	const countEl = document.getElementById("crypto-count");
+	if (!host) return;
+	try {
+		const [{ tokens, walletPubkeys }, recent] = await Promise.all([
+			fetch("/api/tokens").then((r) => r.json()),
+			fetch("/api/events/recent").then((r) => r.json()),
+		]);
+		countEl.textContent = String(tokens.length);
+		host.innerHTML = "";
+
+		for (const t of tokens) {
+			const li = document.createElement("li");
+			li.className = "crypto-row";
+			const holders = Object.keys(t.tokenState.balances).length;
+			li.innerHTML = `
+				<span class="crypto-dot"></span>
+				<span class="crypto-name">${escapeHtml(t.name ?? t.symbol ?? "Token")}</span>
+				<span class="crypto-meta">${holders} holders · ${formatTokenAmount(t.tokenState.totalSupply, t.tokenState.decimals)}</span>
+			`;
+			li.addEventListener("click", () => select(t.id, { focus: true }));
+			host.appendChild(li);
+		}
+
+		// Recent chain ops from event stream
+		const chainEvents = (recent.events ?? [])
+			.filter((ev) => ev.typeKey === "chain.token" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.token")))
+			.slice(-10)
+			.reverse();
+
+		if (chainEvents.length > 0) {
+			const section = document.createElement("div");
+			section.className = "crypto-section";
+			section.innerHTML = "<h4>Recent ops</h4>";
+			for (const ev of chainEvents) {
+				const op = ev.ops?.find((o) => o.preview);
+				const d = document.createElement("div");
+				d.className = "crypto-op";
+				const preview = op?.preview ?? "chain op";
+				d.innerHTML = `<span class="crypto-op-kind">${shortId(ev.objectId)}</span><span class="crypto-op-amount">${preview}</span>`;
+				section.appendChild(d);
+			}
+			host.appendChild(section);
+		}
+
+		if (tokens.length === 0) {
+			const li = document.createElement("li");
+			li.className = "crypto-row empty";
+			li.textContent = "no tokens";
+			host.appendChild(li);
+		}
+	} catch {
+		// keep last paint on transient error
+	}
+}
+
+function formatTokenAmount(raw, decimals) {
+	if (!raw) return "0";
+	try {
+		const n = BigInt(raw);
+		if (decimals === 0) return n.toString();
+		const s = n.toString().padStart(decimals + 1, "0");
+		const intPart = s.slice(0, -decimals) || "0";
+		const fracPart = s.slice(-decimals).replace(/0+$/, "");
+		return fracPart ? `${intPart}.${fracPart}` : intPart;
+	} catch {
+		return raw;
 	}
 }
 
@@ -494,6 +568,7 @@ function bindUI() {
 	makeDraggable("legend",    ".panel-grip", "glonAstrolabe.panelPos.legend");
 	makeDraggable("jobs",      ".panel-grip", "glonAstrolabe.panelPos.jobs");
 	makeDraggable("inspector", ".panel-grip", "glonAstrolabe.panelPos.inspector");
+	makeDraggable("crypto",    ".panel-grip", "glonAstrolabe.panelPos.crypto");
 	makeDraggable("livelog",   ".panel-grip", "glonAstrolabe.panelPos.livelog");
 	window.addEventListener("resize", reclampDraggablePanels);
 }

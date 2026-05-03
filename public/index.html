@@ -66,6 +66,12 @@
 		<ul id="jobs-list" class="jobs-list"></ul>
 	</aside>
 
+	<aside id="crypto">
+		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
+		<h3>Crypto <span id="crypto-count" class="count"></span></h3>
+		<ul id="crypto-list" class="crypto-list"></ul>
+	</aside>
+
 	<aside id="inspector">
 		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
 		<div id="inspector-empty" class="inspector-empty">
@@ -91,6 +97,15 @@
 			<div class="insp-section" id="insp-links-section" hidden>
 				<h3>Links</h3>
 				<div id="insp-links" class="link-list"></div>
+			</div>
+
+			<div class="insp-section" id="insp-token-section" hidden>
+				<h3>Token</h3>
+				<div id="insp-token-header" class="kv"></div>
+				<h4>Balances</h4>
+				<div id="insp-token-balances" class="token-table"></div>
+				<h4>Recent ops</h4>
+				<div id="insp-token-ops" class="token-ops"></div>
 			</div>
 
 			<div id="insp-inject" class="insp-recall"></div>

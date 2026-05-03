@@ -99,7 +99,8 @@ function appendRow(ev, op) {
 	countEl.textContent = totalCount > 999 ? `${(totalCount / 1000).toFixed(1)}k` : String(totalCount);
 
 	const row = document.createElement("div");
-	row.className = "livelog-row " + (ev.replay ? "replay" : "fresh");
+	const isChain = ev.typeKey === "chain.token" || (op.preview ?? "").includes("chain.token.op");
+	row.className = "livelog-row " + (ev.replay ? "replay" : "fresh") + (isChain ? " chain" : "");
 	row.dataset.objectId = ev.objectId;
 	row.title = formatTooltip(ev, op);
 
