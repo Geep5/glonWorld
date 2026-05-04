@@ -317,11 +317,11 @@ async function renderCrypto(objects) {
 			const holders = Object.keys(t.tokenState.balances).length;
 			const isWalletToken = walletPubkeys.includes(t.tokenState.ownerPubkey);
 			const walletBadge = isWalletToken ? ' <span class="token-balance-wallet">your wallet</span>' : '';
-            li.innerHTML = `
-                <span class="crypto-dot"></span>
-                <span class="crypto-name">${escapeHtml(t.name ?? t.symbol ?? "Token")}</span>
+			li.innerHTML = `
+				<span class="crypto-dot"></span>
+				<span class="crypto-name">${escapeHtml(t.name ?? "Token")}${t.tokenState?.symbol ? ` (${escapeHtml(t.tokenState.symbol)})` : ""}</span>
 				<span class="crypto-meta">${shortId(t.id)} · ${holders} holders · ${formatTokenAmount(t.tokenState.totalSupply, t.tokenState.decimals)}${walletBadge}</span>
-            `;
+			`;
 			li.addEventListener("click", () => select(t.id, { focus: true }));
 			host.appendChild(li);
 		}
