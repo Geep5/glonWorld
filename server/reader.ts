@@ -17,6 +17,7 @@ import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, ty
 import { computeState, type ObjectState } from "../../../3/glon/src/dag/dag.js";
 import { hexEncode } from "../../../3/glon/src/crypto.js";
 import { type TokenState, replayTokenState, getWalletPubkeys, TOKEN_TYPE_KEY } from "./tokens.js";
+import { type CoinState, buildCoinState, BUCKET_TYPE_KEY } from "./coins.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
@@ -334,6 +335,7 @@ interface PerObject {
 	tools: VizTool[];
 	outLinks: { targetId: string; relationKey: string; fieldPath: string }[];
 	tokenState?: TokenState;
+	coinState?: CoinState;
 }
 
 function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
@@ -355,7 +357,8 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 
 	const tools = state.typeKey === "agent" ? extractToolsField(state.fields.get("tools")) : [];
 	const blocks = state.typeKey === "agent" ? classifyBlocks(state) : [];
-	const tokenState = state.typeKey === TOKEN_TYPE_KEY ? replayTokenState(state.fields, state.blocks) : undefined;
+	const tokenState = state.typeKey === TOKEN_TYPE_KEY ? (replayTokenState(state.fields, state.blocks) ?? undefined) : undefined;
+	const coinState = state.typeKey === BUCKET_TYPE_KEY ? (buildCoinState(state.blocks, state.fields) ?? undefined) : undefined;
 
 	const object: VizObject = {
 		id: state.id,
@@ -375,7 +378,7 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 		agentStats: state.typeKey === "agent" ? computeAgentStats(state) : undefined,
 	};
 
-	return { object, state, changes, blocks, tools, outLinks, tokenState };
+	return { object, state, changes, blocks, tools, outLinks, tokenState, coinState };
 }
 
 // ── Cache layer ─────────────────────────────────────────────────
@@ -680,6 +683,7 @@ export function getObjectDetail(id: string): {
 		rawFields,
 		contentPreview,
 		...(po.tokenState ? { tokenState: po.tokenState } : {}),
+		...(po.coinState ? { coinState: po.coinState } : {}),
 		walletPubkeys: [...getWalletPubkeys()],
 	};
 }
@@ -950,4 +954,15 @@ export function getTokenOverview(): { tokens: (VizObject & { tokenState: TokenSt
 		tokens.push({ ...po.object, tokenState: po.tokenState });
 	}
 	return { tokens, walletPubkeys: [...getWalletPubkeys()] };
+}
+
+export function getCoinOverview(): { buckets: (VizObject & { coinState: CoinState })[] } {
+	const c = getCache();
+	const buckets: (VizObject & { coinState: CoinState })[] = [];
+	for (const po of c.perObject.values()) {
+		if (po.object.typeKey !== BUCKET_TYPE_KEY) continue;
+		if (!po.coinState) continue;
+		buckets.push({ ...po.object, coinState: po.coinState });
+	}
+	return { buckets };
 }

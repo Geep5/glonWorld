@@ -27,6 +27,9 @@ const els = {
 	tokenHeader: document.getElementById("insp-token-header"),
 	tokenBalances: document.getElementById("insp-token-balances"),
 	tokenOps: document.getElementById("insp-token-ops"),
+	coinSection: document.getElementById("insp-coin-section"),
+	coinHeader: document.getElementById("insp-coin-header"),
+	coinList: document.getElementById("insp-coin-list"),
 	// Landing placeholder stats
 	stats: document.getElementById("stats"),
 };
@@ -210,6 +213,16 @@ function render(detail, changesResponse) {
 		els.tokenSection.hidden = true;
 	}
 
+	// Coin bucket section ----------------------------------------
+	if (detail.coinState) {
+		els.coinSection.hidden = false;
+		els.scalarsSection.hidden = true;
+		els.linksSection.hidden = true;
+		renderCoinSection(detail.coinState);
+	} else {
+		els.coinSection.hidden = true;
+	}
+
 	// Content preview -------------------------------------------
 	if (detail.contentPreview) {
 		els.contentSection.hidden = false;
@@ -280,6 +293,27 @@ function renderTokenSection(ts, walletPubkeys) {
 			if (op.spender) detail += ` spender ${shortId(op.spender)}`;
 			d.innerHTML = `<span class="token-op-kind">${op.kind}</span><span class="token-op-detail">${detail}</span><span class="token-op-time">${shortId(op.signer)}</span>`;
 			els.tokenOps.appendChild(d);
+		}
+	}
+}
+
+function renderCoinSection(cs) {
+	els.coinHeader.innerHTML = "";
+	append(els.coinHeader, row("token", shortId(cs.tokenId)));
+	append(els.coinHeader, row("coins", `${cs.unspentCount} unspent / ${cs.coinCount} total`));
+	append(els.coinHeader, row("supply", cs.totalAmount));
+
+	els.coinList.innerHTML = "";
+	const entries = Object.entries(cs.coins);
+	if (entries.length === 0) {
+		els.coinList.textContent = "No coins yet.";
+	} else {
+		for (const [coinId, coin] of entries) {
+			const d = document.createElement("div");
+			d.className = "token-balance-row";
+			const status = coin.spent ? "spent" : "unspent";
+			d.innerHTML = `<span class="token-balance-pubkey">${shortId(coinId)}</span><span class="token-balance-value">${coin.amount} ${status}</span>`;
+			els.coinList.appendChild(d);
 		}
 	}
 }

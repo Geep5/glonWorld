@@ -304,11 +304,12 @@ async function renderCrypto(objects) {
 	const countEl = document.getElementById("crypto-count");
 	if (!host) return;
 	try {
-		const [{ tokens, walletPubkeys }, recent] = await Promise.all([
+		const [{ tokens, walletPubkeys }, { buckets }, recent] = await Promise.all([
 			fetch("/api/tokens").then((r) => r.json()),
+			fetch("/api/coins").then((r) => r.json()),
 			fetch("/api/events/recent").then((r) => r.json()),
 		]);
-		countEl.textContent = String(tokens.length);
+		countEl.textContent = String(tokens.length + buckets.length);
 		host.innerHTML = "";
 
 		for (const t of tokens) {
@@ -323,6 +324,19 @@ async function renderCrypto(objects) {
 				<span class="crypto-meta">${shortId(t.id)} · ${holders} holders · ${formatTokenAmount(t.tokenState.totalSupply, t.tokenState.decimals)}${walletBadge}</span>
 			`;
 			li.addEventListener("click", () => select(t.id, { focus: true }));
+			host.appendChild(li);
+		}
+
+		// Coin buckets
+		for (const b of buckets) {
+			const li = document.createElement("li");
+			li.className = "crypto-row";
+			li.innerHTML = `
+				<span class="crypto-dot" style="background:#c0c0c0"></span>
+				<span class="crypto-name">Coin Bucket</span>
+				<span class="crypto-meta">${shortId(b.id)} · ${b.coinState.unspentCount} coins · supply ${b.coinState.totalAmount}</span>
+			`;
+			li.addEventListener("click", () => select(b.id, { focus: true }));
 			host.appendChild(li);
 		}
 

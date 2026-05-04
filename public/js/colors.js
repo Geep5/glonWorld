@@ -24,6 +24,7 @@ const FIXED = {
 	gc:         "#a3a3a3",
 	unknown:    "#6b7488",
 	"chain.token": "#ffd700",
+	"chain.coin.bucket": "#c0c0c0",
 };
 
 function hashHue(s) {
