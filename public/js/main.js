@@ -298,93 +298,62 @@ function renderJobs(objects) {
 	}
 }
 
-// Crypto panel: tokens + recent chain ops
+// Crypto panel: coins + recent chain ops
 async function renderCrypto(objects) {
-	const host = document.getElementById("crypto-list");
-	const countEl = document.getElementById("crypto-count");
-	if (!host) return;
-	try {
-		const [{ tokens, walletPubkeys }, { buckets }, recent] = await Promise.all([
-			fetch("/api/tokens").then((r) => r.json()),
-			fetch("/api/coins").then((r) => r.json()),
-			fetch("/api/events/recent").then((r) => r.json()),
-		]);
-		countEl.textContent = String(tokens.length + buckets.length);
-		host.innerHTML = "";
+  const host = document.getElementById("crypto-list");
+  const countEl = document.getElementById("crypto-count");
+  if (!host) return;
+  try {
+    const [{ buckets }, recent] = await Promise.all([
+      fetch("/api/coins").then((r) => r.json()),
+      fetch("/api/events/recent").then((r) => r.json()),
+    ]);
+    countEl.textContent = String(buckets.length);
+    host.innerHTML = "";
 
-		for (const t of tokens) {
-			const li = document.createElement("li");
-			li.className = "crypto-row";
-			const holders = Object.keys(t.tokenState.balances).length;
-			const isWalletToken = walletPubkeys.includes(t.tokenState.ownerPubkey);
-			const walletBadge = isWalletToken ? ' <span class="token-balance-wallet">your wallet</span>' : '';
-			li.innerHTML = `
-				<span class="crypto-dot"></span>
-				<span class="crypto-name">${escapeHtml(t.name ?? "Token")}${t.tokenState?.symbol ? ` (${escapeHtml(t.tokenState.symbol)})` : ""}</span>
-				<span class="crypto-meta">${shortId(t.id)} · ${holders} holders · ${formatTokenAmount(t.tokenState.totalSupply, t.tokenState.decimals)}${walletBadge}</span>
-			`;
-			li.addEventListener("click", () => select(t.id, { focus: true }));
-			host.appendChild(li);
-		}
+    for (const b of buckets) {
+      const li = document.createElement("li");
+      li.className = "crypto-row";
+      li.innerHTML = `
+        <span class="crypto-dot" style="background:#c0c0c0"></span>
+        <span class="crypto-name">Coin Bucket</span>
+        <span class="crypto-meta">${shortId(b.id)} · ${b.coinState.unspentCount} coins · supply ${b.coinState.totalAmount}</span>
+      `;
+      li.addEventListener("click", () => select(b.id, { focus: true }));
+      host.appendChild(li);
+    }
 
-		// Coin buckets
-		for (const b of buckets) {
-			const li = document.createElement("li");
-			li.className = "crypto-row";
-			li.innerHTML = `
-				<span class="crypto-dot" style="background:#c0c0c0"></span>
-				<span class="crypto-name">Coin Bucket</span>
-				<span class="crypto-meta">${shortId(b.id)} · ${b.coinState.unspentCount} coins · supply ${b.coinState.totalAmount}</span>
-			`;
-			li.addEventListener("click", () => select(b.id, { focus: true }));
-			host.appendChild(li);
-		}
+    const chainEvents = (recent.events ?? [])
+      .filter((ev) => ev.typeKey === "chain.coin.bucket" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.coin.op")))
+      .slice(-10)
+      .reverse();
 
-		// Recent chain ops from event stream
-		const chainEvents = (recent.events ?? [])
-			.filter((ev) => ev.typeKey === "chain.token" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.token")))
-			.slice(-10)
-			.reverse();
+    if (chainEvents.length > 0) {
+      const section = document.createElement("div");
+      section.className = "crypto-section";
+      section.innerHTML = "<h4>Recent ops</h4>";
+      for (const ev of chainEvents) {
+        const op = ev.ops?.find((o) => o.preview);
+        const d = document.createElement("div");
+        d.className = "crypto-op";
+        const preview = op?.preview ?? "chain op";
+        d.innerHTML = `<span class="crypto-op-kind">${shortId(ev.objectId)}</span><span class="crypto-op-amount">${preview}</span>`;
+        section.appendChild(d);
+      }
+      host.appendChild(section);
+    }
 
-		if (chainEvents.length > 0) {
-			const section = document.createElement("div");
-			section.className = "crypto-section";
-			section.innerHTML = "<h4>Recent ops</h4>";
-			for (const ev of chainEvents) {
-				const op = ev.ops?.find((o) => o.preview);
-				const d = document.createElement("div");
-				d.className = "crypto-op";
-				const preview = op?.preview ?? "chain op";
-				d.innerHTML = `<span class="crypto-op-kind">${shortId(ev.objectId)}</span><span class="crypto-op-amount">${preview}</span>`;
-				section.appendChild(d);
-			}
-			host.appendChild(section);
-		}
-
-		if (tokens.length === 0) {
-			const li = document.createElement("li");
-			li.className = "crypto-row empty";
-			li.textContent = "no tokens";
-			host.appendChild(li);
-		}
-	} catch {
-		// keep last paint on transient error
-	}
+    if (buckets.length === 0) {
+      const li = document.createElement("li");
+      li.className = "crypto-row empty";
+      li.textContent = "no coins";
+      host.appendChild(li);
+    }
+  } catch {
+    // keep last paint on transient error
+  }
 }
 
-function formatTokenAmount(raw, decimals) {
-	if (!raw) return "0";
-	try {
-		const n = BigInt(raw);
-		if (decimals === 0) return n.toString();
-		const s = n.toString().padStart(decimals + 1, "0");
-		const intPart = s.slice(0, -decimals) || "0";
-		const fracPart = s.slice(-decimals).replace(/0+$/, "");
-		return fracPart ? `${intPart}.${fracPart}` : intPart;
-	} catch {
-		return raw;
-	}
-}
 
 // Cached so the 1Hz tick can recompute countdown bars without re-fetching.
 let jobsRows = [];

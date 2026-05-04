@@ -240,19 +240,6 @@ function summarizeBlock(block: Block): EventOp {
 				tokensBefore: parseInt(meta.tokens_before ?? "0", 10) || 0,
 			};
 		}
-		if (contentType === "chain.token.op") {
-			const op = meta.op ?? "?";
-			const amt = meta.amount ?? "";
-			const to = meta.to ? shortId(meta.to) : "";
-			const from = meta.from ? shortId(meta.from) : "";
-			const signer = meta.signer ? shortId(meta.signer) : "";
-			let preview = `${op}`;
-			if (amt) preview += ` ${amt}`;
-			if (from) preview += ` from ${from}`;
-			if (to) preview += ` to ${to}`;
-			if (signer) preview += ` (by ${signer})`;
-			return { kind: "block", blockKind: "other", preview: clip(preview) };
-		}
 	}
 	return { kind: "block", blockKind: "other" };
 }

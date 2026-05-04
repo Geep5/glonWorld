@@ -16,7 +16,7 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getTokenOverview, getWalletPubkeys } from "./reader.js";
+import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getWalletPubkeys } from "./reader.js";
 import { getCoinOverview } from "./reader.js";
 import { startWatcher, streamEvents, recentEvents } from "./events.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -162,10 +162,6 @@ app.get("/api/wallet", (_req, res) => {
 	res.json({ pubkeys: [...getWalletPubkeys()] });
 });
 
-// Token overview: all chain.token objects with derived state
-app.get("/api/tokens", (_req, res) => {
-	res.json(getTokenOverview());
-});
 
 // Coin overview: all chain.coin.bucket objects with derived state
 app.get("/api/coins", (_req, res) => {

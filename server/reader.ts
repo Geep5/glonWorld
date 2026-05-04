@@ -16,11 +16,35 @@ import { homedir } from "node:os";
 import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../../3/glon/src/proto.js";
 import { computeState, type ObjectState } from "../../../3/glon/src/dag/dag.js";
 import { hexEncode } from "../../../3/glon/src/crypto.js";
-import { type TokenState, replayTokenState, getWalletPubkeys, TOKEN_TYPE_KEY } from "./tokens.js";
 import { type CoinState, buildCoinState, BUCKET_TYPE_KEY } from "./coins.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
+
+	// ── Wallet pubkeys (read-only cache) ─────────────────────────────
+
+	let walletPubkeys: Set<string> | null = null;
+	let walletMtime = 0;
+
+	export function getWalletPubkeys(): Set<string> {
+		const path = join(GLON_ROOT, "wallet.json");
+		if (!existsSync(path)) return new Set();
+		const mtime = statSync(path).mtimeMs;
+		if (walletPubkeys && walletMtime === mtime) return walletPubkeys;
+		try {
+			const raw = JSON.parse(readFileSync(path, "utf-8"));
+			const keys = raw?.keys ?? {};
+			const set = new Set<string>();
+			for (const entry of Object.values(keys) as any[]) {
+				if (typeof entry?.pubkey === "string") set.add(entry.pubkey);
+			}
+			walletPubkeys = set;
+			walletMtime = mtime;
+			return set;
+		} catch {
+			return new Set();
+		}
+	}
 
 // ── Public types ────────────────────────────────────────────────
 
@@ -334,7 +358,6 @@ interface PerObject {
 	blocks: VizBlock[];
 	tools: VizTool[];
 	outLinks: { targetId: string; relationKey: string; fieldPath: string }[];
-	tokenState?: TokenState;
 	coinState?: CoinState;
 }
 
@@ -357,7 +380,6 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 
 	const tools = state.typeKey === "agent" ? extractToolsField(state.fields.get("tools")) : [];
 	const blocks = state.typeKey === "agent" ? classifyBlocks(state) : [];
-	const tokenState = state.typeKey === TOKEN_TYPE_KEY ? (replayTokenState(state.fields, state.blocks) ?? undefined) : undefined;
 	const coinState = state.typeKey === BUCKET_TYPE_KEY ? (buildCoinState(state.blocks, state.fields) ?? undefined) : undefined;
 
 	const object: VizObject = {
@@ -378,7 +400,7 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 		agentStats: state.typeKey === "agent" ? computeAgentStats(state) : undefined,
 	};
 
-	return { object, state, changes, blocks, tools, outLinks, tokenState, coinState };
+	return { object, state, changes, blocks, tools, outLinks, coinState };
 }
 
 // ── Cache layer ─────────────────────────────────────────────────
@@ -632,7 +654,6 @@ export function getObjectDetail(id: string): {
 	inLinks: VizLink[];
 	rawFields: Record<string, unknown>;
 	contentPreview?: string;
-	tokenState?: TokenState;
 	walletPubkeys?: string[];
 } | null {
 	const c = getCache();
@@ -682,7 +703,6 @@ export function getObjectDetail(id: string): {
 		inLinks,
 		rawFields,
 		contentPreview,
-		...(po.tokenState ? { tokenState: po.tokenState } : {}),
 		...(po.coinState ? { coinState: po.coinState } : {}),
 		walletPubkeys: [...getWalletPubkeys()],
 	};
@@ -943,18 +963,6 @@ export function search(query: string, limit: number = 20): SearchResults {
 	return { query, objects: objects.slice(0, limit), blocks: blocks.slice(0, limit) };
 }
 
-export { getWalletPubkeys } from "./tokens.js";
-
-export function getTokenOverview(): { tokens: (VizObject & { tokenState: TokenState })[]; walletPubkeys: string[] } {
-	const c = getCache();
-	const tokens: (VizObject & { tokenState: TokenState })[] = [];
-	for (const po of c.perObject.values()) {
-		if (po.object.typeKey !== TOKEN_TYPE_KEY) continue;
-		if (!po.tokenState) continue;
-		tokens.push({ ...po.object, tokenState: po.tokenState });
-	}
-	return { tokens, walletPubkeys: [...getWalletPubkeys()] };
-}
 
 export function getCoinOverview(): { buckets: (VizObject & { coinState: CoinState })[] } {
 	const c = getCache();

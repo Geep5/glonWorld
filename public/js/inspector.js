@@ -23,10 +23,6 @@ const els = {
 	contentBody: document.getElementById("insp-content"),
 	changes: document.getElementById("insp-changes"),
 	changeCount: document.getElementById("insp-change-count"),
-	tokenSection: document.getElementById("insp-token-section"),
-	tokenHeader: document.getElementById("insp-token-header"),
-	tokenBalances: document.getElementById("insp-token-balances"),
-	tokenOps: document.getElementById("insp-token-ops"),
 	coinSection: document.getElementById("insp-coin-section"),
 	coinHeader: document.getElementById("insp-coin-header"),
 	coinList: document.getElementById("insp-coin-list"),
@@ -203,15 +199,6 @@ function render(detail, changesResponse) {
 		els.linksSection.hidden = true;
 	}
 
-	// Token section ------------------------------------------------
-	if (detail.tokenState) {
-		els.tokenSection.hidden = false;
-		els.scalarsSection.hidden = true;
-		els.linksSection.hidden = true;
-		renderTokenSection(detail.tokenState, detail.walletPubkeys ?? []);
-	} else {
-		els.tokenSection.hidden = true;
-	}
 
 	// Coin bucket section ----------------------------------------
 	if (detail.coinState) {
@@ -254,48 +241,6 @@ function render(detail, changesResponse) {
 	}
 }
 
-function renderTokenSection(ts, walletPubkeys) {
-	const walletSet = new Set(walletPubkeys);
-	els.tokenHeader.innerHTML = "";
-	append(els.tokenHeader, row("name", `${ts.name} (${ts.symbol})`));
-	append(els.tokenHeader, row("decimals", String(ts.decimals)));
-	append(els.tokenHeader, row("total supply", formatTokenAmount(ts.totalSupply, ts.decimals)));
-	const owner = ts.ownerPubkey ? shortId(ts.ownerPubkey) : "renounced";
-	append(els.tokenHeader, row("owner", owner + (ts.renounced ? " (renounced)" : "")));
-
-	els.tokenBalances.innerHTML = "";
-	const entries = Object.entries(ts.balances).sort(([, a], [, b]) => Number(BigInt(b) - BigInt(a)));
-	if (entries.length === 0) {
-		els.tokenBalances.textContent = "No holders yet.";
-	} else {
-		for (const [pubkey, balance] of entries) {
-			const d = document.createElement("div");
-			d.className = "token-balance-row";
-			const isWallet = walletSet.has(pubkey);
-			const walletBadge = isWallet ? '<span class="token-balance-wallet">your wallet</span>' : "";
-			d.innerHTML = `<span class="token-balance-pubkey">${shortId(pubkey)}${walletBadge}</span><span class="token-balance-value">${formatTokenAmount(balance, ts.decimals)}</span>`;
-			els.tokenBalances.appendChild(d);
-		}
-	}
-
-	els.tokenOps.innerHTML = "";
-	const ops = ts.ops.slice().reverse().slice(0, 20);
-	if (ops.length === 0) {
-		els.tokenOps.textContent = "No operations yet.";
-	} else {
-		for (const op of ops) {
-			const d = document.createElement("div");
-			d.className = "token-op-row";
-			let detail = "";
-			if (op.amount) detail += formatTokenAmount(op.amount, ts.decimals);
-			if (op.from) detail += ` from ${shortId(op.from)}`;
-			if (op.to) detail += ` to ${shortId(op.to)}`;
-			if (op.spender) detail += ` spender ${shortId(op.spender)}`;
-			d.innerHTML = `<span class="token-op-kind">${op.kind}</span><span class="token-op-detail">${detail}</span><span class="token-op-time">${shortId(op.signer)}</span>`;
-			els.tokenOps.appendChild(d);
-		}
-	}
-}
 
 function renderCoinSection(cs) {
 	els.coinHeader.innerHTML = "";
@@ -318,19 +263,6 @@ function renderCoinSection(cs) {
 	}
 }
 
-function formatTokenAmount(raw, decimals) {
-	if (!raw) return "0";
-	try {
-		const n = BigInt(raw);
-		if (decimals === 0) return n.toString();
-		const s = n.toString().padStart(decimals + 1, "0");
-		const intPart = s.slice(0, -decimals) || "0";
-		const fracPart = s.slice(-decimals).replace(/0+$/, "");
-		return fracPart ? `${intPart}.${fracPart}` : intPart;
-	} catch {
-		return raw;
-	}
-}
 
 // ── DOM helpers ────────────────────────────────────────────────
 
