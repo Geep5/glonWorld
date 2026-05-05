@@ -37,8 +37,7 @@ let contextAgentId = null;
 
 
 	// WASD / Space pan state
-	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
-	const PAN_SPEED = 25; // world units per second
+	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
 
 
 	// HUD grid dimensions (must match setupHudGrid call)
@@ -562,12 +561,14 @@ function bindUI() {
 		if (k in keys) keys[k] = true;
 		if (e.code === "Space") keys.space = true;
 		if (e.key === "Shift") keys.shift = true;
+		if (e.key === "Control") keys.ctrl = true;
 	});
 	document.addEventListener("keyup", (e) => {
 		const k = e.key.toLowerCase();
 		if (k in keys) keys[k] = false;
 		if (e.code === "Space") keys.space = false;
 		if (e.key === "Shift") keys.shift = false;
+		if (e.key === "Control") keys.ctrl = false;
 	});
 
 	bindInspector({
@@ -1114,33 +1115,26 @@ function animate() {
 
 		const screen = new THREE.Vector3();
 		const dpr = window.devicePixelRatio || 1;
-		// Show labels for nodes near the mouse cursor, plus the selected/hovered
-		// node. Hold Shift to show all labels.
-		const LABEL_RADIUS = 160; // CSS pixels
+		// Show all labels when Ctrl is held, otherwise only pinned (selected/hovered).
+		// Skip protobuf-like names — use shortId instead.
 		for (const [id, node] of cosmosCtx.nodes) {
 			const obj = node.mesh.userData.obj;
 			const isPinned = id === selectedId || id === hoverId;
 			if (!node.mesh.visible) continue;
+			if (!isPinned && !keys.ctrl) continue;
+
 			screen.copy(node.mesh.position);
 			screen.project(camera);
 			if (screen.z > 1) continue;
 
-			// CSS pixel coordinates
 			const px = (screen.x * 0.5 + 0.5) * window.innerWidth;
 			const py = (-screen.y * 0.5 + 0.5) * window.innerHeight;
-
-			if (!isPinned && !keys.shift) {
-				if (!cursorActive) continue;
-				const dx = px - pointer.x;
-				const dy = py - pointer.y;
-				if (dx * dx + dy * dy > LABEL_RADIUS * LABEL_RADIUS) continue;
-			}
-
-			// Canvas pixel coordinates for drawing
 			const x = px * dpr;
 			const y = py * dpr;
+
 			const { hex } = colorForType(obj.typeKey);
-			const label = obj.name ?? shortId(obj.id);
+			const rawName = obj.name;
+			const label = isProtobufName(rawName) ? shortId(obj.id) : (rawName ?? shortId(obj.id));
 			labelCtx.fillStyle = "rgba(5,6,10,.75)";
 			const metrics = labelCtx.measureText(label);
 			const padX = 6, padY = 3;
@@ -1383,10 +1377,21 @@ function onResize() {
 	labelCtx.scale(dpr, dpr);
 }
 
-function shortId(id) {
-	if (!id) return "";
-	return id.length > 14 ? id.slice(0, 8) + "…" + id.slice(-4) : id;
-}
+	function shortId(id) {
+		if (!id) return "";
+		return id.length > 14 ? id.slice(0, 8) + "…" + id.slice(-4) : id;
+	}
+
+	function isProtobufName(name) {
+		if (!name) return false;
+		// Actual .pb filenames
+		if (name.endsWith(".pb")) return true;
+		// Hex hashes (sha256-like)
+		if (/^[0-9a-f]{16,}$/i.test(name)) return true;
+		// UUIDs
+		if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return true;
+		return false;
+	}
 
 function formatNumber(n) {
 	if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k";
