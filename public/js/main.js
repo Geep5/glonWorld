@@ -17,9 +17,9 @@ import { RenderPass }     from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { buildCosmos } from "./cosmos.js";
 import { colorForType } from "./colors.js";
-import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
-import { setupLiveLog } from "./livelog.js";
-
+	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
+	import { setupLiveLog } from "./livelog.js";
+	import { openAgentChat } from "./chat.js";
 // ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -682,9 +682,13 @@ function onClick(e) {
 	const first = hits[0]?.object;
 	if (!first) return;
 	const ud = first.userData;
-	if (ud.kind === "object") {
-		select(ud.id);
-	}
+		if (ud.kind === "object") {
+			select(ud.id);
+			// Open floating chat window for agents
+			if (ud.typeKey === "agent") {
+				openAgentChat(ud.id, ud.obj?.name);
+			}
+		}
 }
 
 function onDoubleClick(e) {
