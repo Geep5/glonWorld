@@ -254,10 +254,27 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	padding: 2px 4px;
 	z-index: 1;
 }
-.panel-dragging {
-	box-shadow: 0 16px 48px rgba(0,0,0,.7), 0 0 0 1px rgba(94,234,212,.35) !important;
-	z-index: 100 !important;
-}
+	.panel-dragging {
+		box-shadow: 0 16px 48px rgba(0,0,0,.7), 0 0 0 1px rgba(94,234,212,.35) !important;
+		z-index: 100 !important;
+	}
+
+	.panel-resize-handle {
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		width: 14px;
+		height: 14px;
+		cursor: nwse-resize;
+		z-index: 10;
+		background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.15) 50%);
+		border-bottom-right-radius: inherit;
+		pointer-events: auto;
+	}
+
+	.panel-resize-handle:hover {
+		background: linear-gradient(135deg, transparent 50%, rgba(94,234,212,0.4) 50%);
+	}
 
 /* ── Inspector ────────────────────────────────────────────────── */
 #inspector {

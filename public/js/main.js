@@ -20,7 +20,7 @@ import { colorForType } from "./colors.js";
 	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
-	import { getRender, applyToMesh, updateOverlays } from "./planet-styles.js";
+	import { getRender, setRender, applyToMesh, updateOverlays } from "./planet-styles.js";
 	// ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -184,9 +184,10 @@ function setupThree() {
 	// Planet render changes from inspector — update mesh immediately
 	window.addEventListener("planet-render-changed", (e) => {
 		const node = cosmosCtx?.nodes?.get(e.detail.objectId);
-		if (node?.mesh) {
-			const render = e.detail.render || getRender(e.detail.objectId);
-			if (render) applyToMesh(node.mesh, render);
+		const render = e.detail.render || getRender(e.detail.objectId);
+		if (render) {
+			setRender(e.detail.objectId, render);
+			if (node?.mesh) applyToMesh(node.mesh, render);
 		}
 	});
 	canvas.addEventListener("pointermove", onPointerMove);
@@ -588,7 +589,12 @@ function bindUI() {
 		makeDraggable("inspector", null, "glonAstrolabe.panelPos.inspector");
 		makeDraggable("crypto",    null, "glonAstrolabe.panelPos.crypto");
 		makeDraggable("livelog",   null, "glonAstrolabe.panelPos.livelog");
-	window.addEventListener("resize", reclampDraggablePanels);
+		// Resizable panels — bottom-right corner handle
+		makeResizable("legend",    "glonAstrolabe.panelSize.legend");
+		makeResizable("jobs",      "glonAstrolabe.panelSize.jobs");
+		makeResizable("inspector", "glonAstrolabe.panelSize.inspector");
+		makeResizable("crypto",    "glonAstrolabe.panelSize.crypto");
+		makeResizable("livelog",   "glonAstrolabe.panelSize.livelog");
 }
 
 
@@ -1215,9 +1221,75 @@ function applyClampedPosition(panel, left, top) {
 	// grip stays inside the viewport even after a drag-and-resize.
 	const clampedTop  = Math.max(0,                 Math.min(window.innerHeight - HANDLE_MARGIN, top));
 	applyAbsolutePosition(panel, clampedLeft, clampedTop);
-}
+	}
 
-// Re-clamp every panel after the viewport resizes so a wide-then-narrow
+	// ── Resizable panels ─────────────────────────────────────────────
+
+	function makeResizable(panelId, storageKey) {
+		const panel = document.getElementById(panelId);
+		if (!panel) return;
+
+		// Create resize handle
+		const handle = document.createElement("div");
+		handle.className = "panel-resize-handle";
+		handle.title = "drag to resize";
+		panel.appendChild(handle);
+
+		// Restore saved size
+		try {
+			const raw = localStorage.getItem(storageKey);
+			if (raw) {
+				const saved = JSON.parse(raw);
+				if (Number.isFinite(saved?.width))  panel.style.width  = saved.width + "px";
+				if (Number.isFinite(saved?.height)) panel.style.height = saved.height + "px";
+			}
+		} catch { /* ignore */ }
+
+		let pointerId = null;
+		let startX = 0;
+		let startY = 0;
+		let startW = 0;
+		let startH = 0;
+
+		handle.addEventListener("pointerdown", (e) => {
+			if (e.button !== 0) return;
+			const rect = panel.getBoundingClientRect();
+			startX = e.clientX;
+			startY = e.clientY;
+			startW = rect.width;
+			startH = rect.height;
+			pointerId = e.pointerId;
+			handle.setPointerCapture(pointerId);
+			e.preventDefault();
+			e.stopPropagation();
+		});
+
+		handle.addEventListener("pointermove", (e) => {
+			if (e.pointerId !== pointerId) return;
+			const minW = 160;
+			const minH = 80;
+			const newW = Math.max(minW, startW + (e.clientX - startX));
+			const newH = Math.max(minH, startH + (e.clientY - startY));
+			panel.style.width = newW + "px";
+			panel.style.height = newH + "px";
+		});
+
+		const finish = (e) => {
+			if (e.pointerId !== pointerId) return;
+			if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+			pointerId = null;
+			const w = parseFloat(panel.style.width);
+			const h = parseFloat(panel.style.height);
+			if (Number.isFinite(w) && Number.isFinite(h)) {
+				try { localStorage.setItem(storageKey, JSON.stringify({ width: w, height: h })); }
+				catch { /* ignore */ }
+			}
+		};
+		handle.addEventListener("pointerup", finish);
+		handle.addEventListener("pointercancel", finish);
+	}
+
+	// Re-clamp every panel after the viewport resizes so a wide-then-narrow
 // browser doesn't strand a panel off-screen. Only panels that have been
 // dragged at least once participate \u2014 untouched panels keep their CSS-
 // anchored layout (which is itself responsive).
