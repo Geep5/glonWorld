@@ -231,8 +231,9 @@ app.get("/api/coins", (_req, res) => {
 // Serve three's ESM bundle from node_modules so the browser can resolve
 // bare `three` imports via an importmap (see public/index.html).
 
-app.use("/vendor/three", express.static(join(ROOT, "node_modules", "three")));
-app.use(express.static(join(ROOT, "public"), { extensions: ["html"] }));
+	app.use("/vendor/three", express.static(join(ROOT, "node_modules", "three")));
+	app.use("/vendor/rapier", express.static(join(ROOT, "node_modules", "@dimforge", "rapier3d-compat")));
+	app.use(express.static(join(ROOT, "public"), { extensions: ["html"] }));
 
 // ── Bootstrap ──────────────────────────────────────────────────────
 

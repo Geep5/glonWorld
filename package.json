@@ -11,7 +11,8 @@
 	"dependencies": {
 		"express": "^4.21.0",
 		"protobufjs": "^7.5.3",
-		"three": "^0.168.0"
+		"three": "^0.168.0",
+		"@dimforge/rapier3d-compat": "^0.14.0"
 	},
 	"devDependencies": {
 		"@types/express": "^4.17.21",

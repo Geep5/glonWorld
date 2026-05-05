@@ -4,7 +4,7 @@
  * subtle scale pulse.
  *
  * Layout: one ring per type (agent at center, peers/programs/files in
- * outward orbits). Members are placed at deterministic angles around
+ * outward visuals). Members are placed at deterministic angles around
  * each ring with a small id-seeded jitter on y, so reloads produce a
  * stable scene.
  *
@@ -21,7 +21,7 @@
 	import * as THREE from "three";
 	import { colorForType } from "./colors.js";
 	import { applyStoredStyle } from "./planet-styles.js";
-
+	import { getWorld, getRapier, step as stepPhysics } from "./physics.js";
 
 // \u2500\u2500 Procedural planet textures \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 //
@@ -297,8 +297,7 @@ export function buildCosmos(state, materials) {
 	const positions = new Map(); // id → THREE.Vector3
 	const nodes = new Map();     // id → { mesh, ring, halo? }
 
-	const orbits = new Map();   // id → { baseX, baseY, baseZ, ampX/Y/Z, freqX/Y/Z, phaseX/Y/Z }
-
+	const visuals = new Map();   // id → visual state (lastSeen, baseEmissive, etc.)
 	// Nodes --------------------------------------------------------
 	for (const [typeKey, list] of byType) {
 		const isAgentType = typeKey === "agent" || typeKey === "trading_agent";
@@ -335,7 +334,7 @@ export function buildCosmos(state, materials) {
 				const sIdx = siblings.indexOf(obj.id);
 				const sCount = siblings.length;
 				const depth = (isAgentType ? Math.max(1, spawnDepthOf(obj)) : 1);
-				const parentOrbit = orbits.get(parentId);
+				const parentOrbit = visuals.get(parentId);
 				const parentHaloR = parentOrbit?.haloScale ?? 4;
 				const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
 				const theta = angleFor(sIdx, sCount, "sub" + parentId);
@@ -402,12 +401,6 @@ export function buildCosmos(state, materials) {
 			group.add(mesh);
 
 			// Every ball gets one indicator halo — a dashed equator ring.
-			// Opacity in tick sums three contributions:
-			//   - featured base (Graice's persistent "working ring")
-			//   - context-active boost (ball is in the agent's live context)
-			//   - heat boost (transient flash on a recent change)
-			// Heat-only balls remain invisible at rest because all three terms
-			// are zero unless something happens.
 			const baseHaloOpacity = isFeatured ? 0.32 : 0.0;
 			const haloScale = isFeatured ? r * 3.2 : r * 2.1;
 			const { group: halo, material: haloMat } = makeDashedRing({
@@ -420,13 +413,27 @@ export function buildCosmos(state, materials) {
 			halo.userData = { kind: "halo", id: obj.id };
 			group.add(halo);
 
+			// Rapier rigid body + collider
+			const RAPIER = getRapier();
+			const world = getWorld();
+			const bodyDesc = isFeatured
+				? RAPIER.RigidBodyDesc.kinematicPositionBased()
+					.setTranslation(pos.x, pos.y, pos.z)
+				: RAPIER.RigidBodyDesc.dynamic()
+					.setTranslation(pos.x, pos.y, pos.z)
+					.setLinearDamping(2.0)
+					.setAngularDamping(1.0)
+					.setCanSleep(true);
+			const body = world.createRigidBody(bodyDesc);
+			const colliderDesc = RAPIER.ColliderDesc.ball(r)
+				.setFriction(0.0)
+				.setRestitution(0.0)
+				.setDensity(1.0);
+			world.createCollider(colliderDesc, body);
 
 			positions.set(obj.id, pos);
-			nodes.set(obj.id, { mesh, halo, haloMat });
-			orbits.set(obj.id, {
-				baseX: pos.x,
-				baseY: pos.y,
-				baseZ: pos.z,
+			nodes.set(obj.id, { mesh, halo, haloMat, body });
+			visuals.set(obj.id, {
 				ampX: floatAmp(obj.id, "x") * floatScale,
 				ampY: floatAmp(obj.id, "y") * floatScale,
 				ampZ: floatAmp(obj.id, "z") * floatScale,
@@ -436,37 +443,16 @@ export function buildCosmos(state, materials) {
 				phaseX: hash01(obj.id + "px") * Math.PI * 2,
 				phaseY: hash01(obj.id + "py") * Math.PI * 2,
 				phaseZ: hash01(obj.id + "pz") * Math.PI * 2,
-				// Magnet offset (smoothly tweened toward the cursor target each frame).
-				magnetX: 0,
-				magnetY: 0,
-				magnetZ: 0,
-				// Push-out offset (smoothly tweened to clear any intersecting
-				// highlight halo). Zero unless this ball overlaps the selection
-				// or context halo of another ball.
-				pushX: 0,
-				pushY: 0,
-				pushZ: 0,
-				colPushX: 0,
-				colPushY: 0,
-				colPushZ: 0,
-				// Featured balls (the agent) shouldn't drift toward the cursor;
-				// the world is built around them as a stable anchor.
 				canMagnet: !isFeatured,
-				// Heat state: lastSeen seeds emissive/halo/scale boost; bumped
-				// from the SSE stream and decayed each frame.
 				lastSeen: obj.updatedAt || 0,
 				baseEmissive,
 				baseRadius: r,
 				baseHaloOpacity,
 				pulsePhase: hash01(obj.id + "hp") * Math.PI * 2,
 				haloScale,
-				// Slow self-rotation so the surface texture reads as a spinning
-				// world. Featured (the agent) spins slower so it stays a stable
-				// focal point. tilt mimics the axial tilt of the planet.
 				spinRate: (isFeatured ? 0.05 : 0.15) + hash01(obj.id + "sr") * 0.18,
 				spinPhase: hash01(obj.id + "sp") * Math.PI * 2,
 				tilt: (hash01(obj.id + "tl") - 0.5) * 0.6,
-				// Original halo color so we can restore it after a selection clears.
 				haloColor: color.clone(),
 				contextActive: false,
 			});
@@ -477,13 +463,13 @@ export function buildCosmos(state, materials) {
 	for (const [childId, parentId] of orbitParentOf) {
 		const node = nodes.get(childId);
 		if (!node || !positions.has(parentId)) continue;
-		const o = orbits.get(childId);
+		const o = visuals.get(childId);
 		const parentPos = positions.get(parentId);
 		const siblings = orbitChildren.get(parentId) ?? [];
 		const sIdx = siblings.indexOf(childId);
 		const sCount = siblings.length;
 		const depth = 1;
-		const parentOrbit = orbits.get(parentId);
+		const parentOrbit = visuals.get(parentId);
 		const parentHaloR = parentOrbit?.haloScale ?? 4;
 		const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
 		const theta = angleFor(sIdx, sCount, "sub" + parentId);
@@ -494,11 +480,8 @@ export function buildCosmos(state, materials) {
 		);
 		node.mesh.position.copy(newPos);
 		node.halo.position.copy(newPos);
-		positions.get(childId).copy(newPos);
-		o.baseX = newPos.x;
-		o.baseY = newPos.y;
-		o.baseZ = newPos.z;
-	}
+			positions.get(childId).copy(newPos);
+			node.body.setTranslation({ x: newPos.x, y: newPos.y, z: newPos.z }, true);
 
 	// Anchor chain: arrange anchors in a 3D helix.
 	const anchors = state.objects.filter((o) => o.typeKey === "chain.anchor");
@@ -546,12 +529,7 @@ export function buildCosmos(state, materials) {
 				positions.get(obj.id).copy(pos);
 				node.mesh.position.copy(pos);
 				if (node.halo) node.halo.position.copy(pos);
-				const o = orbits.get(obj.id);
-				if (o) {
-					o.baseX = pos.x;
-					o.baseY = pos.y;
-					o.baseZ = pos.z;
-				}
+				node.body.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
 				// Head anchor (newest) gets a size + glow boost so the chain tip is obvious.
 				if (i === anchorChain.length - 1) {
 					node.mesh.scale.multiplyScalar(1.6);
@@ -658,22 +636,31 @@ export function buildCosmos(state, materials) {
 	const tmpClosest = new THREE.Vector3();
 	const yAxis = new THREE.Vector3(0, 1, 0);
 	// Reused per-frame buffer for highlight spheres. Cleared and refilled in
-	// phase 2 of tick() so the GC has nothing to do.
-	const highlightBuf = [];
-
+	// Reused per-frame buffer for highlight spheres. Cleared and refilled in
 	// Bump heat for an object id (called from the SSE event handler in main.js).
 	// `ts` defaults to now; pass an earlier value to seed historical activity.
 	function bumpHeat(id, ts) {
-		const o = orbits.get(id);
-		if (!o) return;
+		const o = visuals.get(id);
+		const node = nodes.get(id);
+		if (!o || !node) return;
 		o.lastSeen = ts ?? Date.now();
+		// Small outward "pop" impulse
+		const body = node.body;
+		if (body.bodyType() !== getRapier().RigidBodyType.KinematicPositionBased) {
+			const mass = body.mass();
+			body.applyImpulse({
+				x: (Math.random() - 0.5) * 0.01 * mass,
+				y: (Math.random() - 0.5) * 0.01 * mass,
+				z: (Math.random() - 0.5) * 0.01 * mass,
+			}, true);
+		}
 	}
 
 	// Toggle the in-context state on every ball given the agent's current
 	// referenced-objects set. Applied each frame via the orbit map; balls
 	// not in the set decay to their resting halo/emissive.
 	function setContextActive(idSet) {
-		for (const [id, o] of orbits) {
+		for (const [id, o] of visuals) {
 			o.contextActive = idSet.has(id);
 		}
 	}
@@ -696,23 +683,33 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
-	function tick(elapsedSec, cursorRay) {
+	function tick(elapsedSec, dt, cursorRay) {
 		const now = Date.now();
 
-		// Phase 1 — float + cursor-magnet, stored as `_floatX/Y/Z` so phase 2
-		// can read every ball's tentative position before any push runs.
-		let snappedId = null;
-		let snapClosest = null;
-		let snapMinD = Infinity;
+		// ── Phase 1: apply float forces ──────────────────────────────
+		for (const [id, o] of visuals) {
+			const node = nodes.get(id);
+			if (!node) continue;
+			const body = node.body;
+			if (body.bodyType() === getRapier().RigidBodyType.KinematicPositionBased) continue;
+
+			const fx = Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX * 0.5;
+			const fy = Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY * 0.5;
+			const fz = Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ * 0.5;
+			body.applyForce({ x: fx, y: fy, z: fz }, true);
+		}
+
+		// ── Phase 2: cursor magnet impulses ──────────────────────────
 		if (cursorRay) {
-			for (const [id, o] of orbits) {
+			let snappedId = null;
+			let snapClosest = null;
+			let snapMinD = Infinity;
+			for (const [id, o] of visuals) {
 				if (!o.canMagnet) continue;
 				const node = nodes.get(id);
 				if (!node || !node.mesh.visible) continue;
-				const fx = o.baseX + Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
-				const fy = o.baseY + Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
-				const fz = o.baseZ + Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
-				tmpBase.set(fx, fy, fz);
+				const t = node.body.translation();
+				tmpBase.set(t.x, t.y, t.z);
 				cursorRay.closestPointToPoint(tmpBase, tmpClosest);
 				const d = tmpBase.distanceTo(tmpClosest);
 				if (d < snapMinD) {
@@ -722,215 +719,75 @@ export function buildCosmos(state, materials) {
 				}
 			}
 			if (snapMinD > SNAP_RADIUS) snappedId = null;
-		}
-		for (const [id, o] of orbits) {
-			const node = nodes.get(id);
-			if (!node) continue;
-			const fx = o.baseX + Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
-			const fy = o.baseY + Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
-			const fz = o.baseZ + Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
-			let tgtX = 0, tgtY = 0, tgtZ = 0;
-		if (cursorRay && o.canMagnet && node.mesh.visible) {
-			if (id === snappedId && snapClosest) {
-				// Snap candidate: aim for the cursor position with full strength
-				// but still lerp so the approach stays smooth.
-				tgtX = snapClosest.x - fx;
-				tgtY = snapClosest.y - fy;
-				tgtZ = snapClosest.z - fz;
-				o.magnetX += (tgtX - o.magnetX) * MAGNET_LERP;
-				o.magnetY += (tgtY - o.magnetY) * MAGNET_LERP;
-				o.magnetZ += (tgtZ - o.magnetZ) * MAGNET_LERP;
-			} else if (!snappedId) {
-				// No snap candidate — regular magnet pull
-				tmpBase.set(fx, fy, fz);
-				cursorRay.closestPointToPoint(tmpBase, tmpClosest);
-				const d = tmpBase.distanceTo(tmpClosest);
-				if (d < MAGNET_RADIUS) {
-					const k = MAGNET_PULL * (1 - d / MAGNET_RADIUS);
-					tgtX = (tmpClosest.x - fx) * k;
-					tgtY = (tmpClosest.y - fy) * k;
-					tgtZ = (tmpClosest.z - fz) * k;
-				}
-				o.magnetX += (tgtX - o.magnetX) * MAGNET_LERP;
-				o.magnetY += (tgtY - o.magnetY) * MAGNET_LERP;
-				o.magnetZ += (tgtZ - o.magnetZ) * MAGNET_LERP;
-			} else {
-				// Another ball is snapped — lose magnetism and hover back
-				o.magnetX += (0 - o.magnetX) * MAGNET_LERP;
-				o.magnetY += (0 - o.magnetY) * MAGNET_LERP;
-				o.magnetZ += (0 - o.magnetZ) * MAGNET_LERP;
-			}
-		} else {
-			// No cursor or can't magnet — drift back
-			o.magnetX += (0 - o.magnetX) * MAGNET_LERP;
-			o.magnetY += (0 - o.magnetY) * MAGNET_LERP;
-			o.magnetZ += (0 - o.magnetZ) * MAGNET_LERP;
-		}
-			o._floatX = fx + o.magnetX;
-			o._floatY = fy + o.magnetY;
-			o._floatZ = fz + o.magnetZ;
-		}
 
-		// Phase 2 \u2014 collect highlight spheres (selection halo + every
-		// in-context ball's halo). These are the volumes that should clear
-		// other balls. Heat halos are intentionally excluded \u2014 they're a
-		// transient activity flicker, not a sticky highlight.
-		highlightBuf.length = 0;
-		// Per ball, take the LARGEST visible halo as that ball's push source.
-		// Three radii contribute and any ball can have all three at once:
-		//   - selection halo (white, only for the currently-selected ball)
-		//   - in-context halo (the persistent ring on context-active balls)
-		//   - featured base halo (the agent's "working sphere" \u2014 always lit
-		//     for any ball with baseHaloOpacity>0, regardless of context state)
-		// Heat halos are intentionally excluded: they're a transient flicker
-		// rather than a sticky highlight, so they don't push.
-		for (const [id, o] of orbits) {
-			let radius = 0;
-			if (o.contextActive)       radius = Math.max(radius, o.haloScale * CONTEXT_SCALE);
-			if (o.baseHaloOpacity > 0) radius = Math.max(radius, o.haloScale);
-			// Receiver-side outer extent: when this ball is itself a highlight
-			// source, its halo (not its ball) is what should clear other halos.
-			o._outerRadius = Math.max(o.baseRadius, radius);
-			if (radius <= 0) continue;
-			highlightBuf.push({
-				x: o._floatX, y: o._floatY, z: o._floatZ,
-				radius,
-				sourceId: id,
-			});
-		}
+			for (const [id, o] of visuals) {
+				if (!o.canMagnet) continue;
+				const node = nodes.get(id);
+				if (!node || !node.mesh.visible) continue;
+				const body = node.body;
+				if (body.bodyType() === getRapier().RigidBodyType.KinematicPositionBased) continue;
 
-		// Phase 2.5 — ball-ball collision repulsion.
-		// Only visible balls participate; hidden/muted ones are ignored.
-		const colBalls = [];
-		for (const [id, o] of orbits) {
-			const node = nodes.get(id);
-			if (!node || !node.mesh.visible) continue;
-			colBalls.push({ id, o, r: o.baseRadius });
-		}
-		const COL_PADDING = 0.15;
-		// Spatial hash: bucket objects by their (integer) float position.
-		// Cell size = 3 units; only check same and adjacent cells.
-		const cellSize = 3;
-		const grid = new Map();
-		for (const b of colBalls) {
-			const cx = Math.floor(b.o._floatX / cellSize);
-			const cy = Math.floor(b.o._floatY / cellSize);
-			const cz = Math.floor(b.o._floatZ / cellSize);
-			const key = `${cx},${cy},${cz}`;
-			if (!grid.has(key)) grid.set(key, []);
-			grid.get(key).push(b);
-		}
-		for (const [key, cell] of grid) {
-			const [cx, cy, cz] = key.split(",").map(Number);
-			const neighbors = [];
-			for (let dx = -1; dx <= 1; dx++) {
-				for (let dy = -1; dy <= 1; dy++) {
-					for (let dz = -1; dz <= 1; dz++) {
-						const nkey = `${cx+dx},${cy+dy},${cz+dz}`;
-						if (grid.has(nkey)) neighbors.push(...grid.get(nkey));
+				const t = body.translation();
+				let ix = 0, iy = 0, iz = 0;
+				if (id === snappedId && snapClosest) {
+					const k = MAGNET_PULL * body.mass();
+					ix = (snapClosest.x - t.x) * k;
+					iy = (snapClosest.y - t.y) * k;
+					iz = (snapClosest.z - t.z) * k;
+				} else if (!snappedId) {
+					tmpBase.set(t.x, t.y, t.z);
+					cursorRay.closestPointToPoint(tmpBase, tmpClosest);
+					const d = tmpBase.distanceTo(tmpClosest);
+					if (d < MAGNET_RADIUS) {
+						const k = MAGNET_PULL * (1 - d / MAGNET_RADIUS) * body.mass();
+						ix = (tmpClosest.x - t.x) * k;
+						iy = (tmpClosest.y - t.y) * k;
+						iz = (tmpClosest.z - t.z) * k;
 					}
 				}
-			}
-			for (let i = 0; i < cell.length; i++) {
-				const a = cell[i];
-				const oa = a.o;
-				for (let j = 0; j < neighbors.length; j++) {
-					const b = neighbors[j];
-					if (a.id >= b.id) continue;
-					const ob = b.o;
-					const ddx = oa._floatX - ob._floatX;
-					const ddy = oa._floatY - ob._floatY;
-					const ddz = oa._floatZ - ob._floatZ;
-					const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
-					const minD = a.r + b.r + COL_PADDING;
-					if (dSq >= minD * minD || dSq < 1e-6) continue;
-					const d = Math.sqrt(dSq);
-					const overlap = minD - d;
-					const inv = 1 / d;
-					const fx = ddx * inv * overlap * 0.5;
-					const fy = ddy * inv * overlap * 0.5;
-					const fz = ddz * inv * overlap * 0.5;
-					oa._colPushX = (oa._colPushX || 0) + fx;
-					oa._colPushY = (oa._colPushY || 0) + fy;
-					oa._colPushZ = (oa._colPushZ || 0) + fz;
-					ob._colPushX = (ob._colPushX || 0) - fx;
-					ob._colPushY = (ob._colPushY || 0) - fy;
-					ob._colPushZ = (ob._colPushZ || 0) - fz;
+				if (ix !== 0 || iy !== 0 || iz !== 0) {
+					body.applyImpulse({ x: ix * dt, y: iy * dt, z: iz * dt }, true);
 				}
 			}
 		}
 
-		// Phase 3 \u2014 compute push offset against every highlight, smooth, and
-		// commit the final position + spin + heat/emissive/halo state.
-		for (const [id, o] of orbits) {
+		// ── Phase 3: step physics ────────────────────────────────────
+		stepPhysics(dt);
+
+		// ── Phase 4: sync meshes + visual effects ────────────────────
+		for (const [id, o] of visuals) {
 			const node = nodes.get(id);
 			if (!node) continue;
-			let pushTgtX = o._colPushX || 0;
-			let pushTgtY = o._colPushY || 0;
-			let pushTgtZ = o._colPushZ || 0;
-			o._colPushX = o._colPushY = o._colPushZ = 0;
-			// Featured balls (the agent stars) are anchored: their float position
-			// is the world's reference frame, so we never push them. Other balls
-			// glide around them. The pushTgt accumulator starts from collision
-			// repulsion; any previous push from a transient highlight smoothly
-			// relaxes back to 0.
-			if (o.canMagnet) for (const h of highlightBuf) {
-				if (h.sourceId === id) continue;
-				const dx = o._floatX - h.x;
-				const dy = o._floatY - h.y;
-				const dz = o._floatZ - h.z;
-				const dSq = dx * dx + dy * dy + dz * dz;
-				// Clear point: receiver's outer extent just outside the source's
-				// halo, with a small visual padding so the meeting line never
-				// reads as a graze. Using _outerRadius (rather than baseRadius)
-				// is what makes halo-vs-halo (not just ball-vs-halo) clear.
-				const clearD = h.radius + o._outerRadius + PUSH_PADDING;
-				if (dSq >= clearD * clearD || dSq < 1e-6) continue;
-				const d = Math.sqrt(dSq);
-				const overlap = clearD - d;
-				const inv = 1 / d;
-				pushTgtX += dx * inv * overlap;
-				pushTgtY += dy * inv * overlap;
-				pushTgtZ += dz * inv * overlap;
-			}
-			o.pushX += (pushTgtX - o.pushX) * PUSH_LERP;
-			o.pushY += (pushTgtY - o.pushY) * PUSH_LERP;
-			o.pushZ += (pushTgtZ - o.pushZ) * PUSH_LERP;
-			const x = o._floatX + o.pushX;
-			const y = o._floatY + o.pushY;
-			const z = o._floatZ + o.pushZ;
-			node.mesh.position.set(x, y, z);
-			positions.get(id).set(x, y, z);
+			const t = node.body.translation();
+			node.mesh.position.set(t.x, t.y, t.z);
+			node.halo.position.set(t.x, t.y, t.z);
+			positions.get(id).set(t.x, t.y, t.z);
+
 			node.mesh.rotation.set(o.tilt, elapsedSec * o.spinRate + o.spinPhase, 0);
-			const dt = now - o.lastSeen;
-			const heat = o.lastSeen > 0 && dt < HEAT_TAU_MS * 6
-				? Math.exp(-dt / HEAT_TAU_MS)
+
+			const age = now - o.lastSeen;
+			const heat = o.lastSeen > 0 && age < HEAT_TAU_MS * 6
+				? Math.exp(-age / HEAT_TAU_MS)
 				: 0;
 			const ctx = o.contextActive ? CONTEXT_BOOST : 0;
 			const isSelected = id === selectedId;
 			node.mesh.material.emissiveIntensity = o.baseEmissive + ctx + heat * HEAT_EMISSIVE_BOOST + (isSelected ? SELECT_BOOST : 0);
+
 			const pulseScale = 1 + heat * HEAT_SCALE_AMP * Math.sin(elapsedSec * HEAT_PULSE_FREQ + o.pulsePhase);
 			const ctxScale = o.contextActive ? CONTEXT_SCALE : 1;
 			node.mesh.scale.setScalar(o.baseRadius * pulseScale * ctxScale);
-			// Single dotted halo: featured base + context boost + heat sum into
-			// the target opacity. Smooth-lerp so toggles fade rather than pop;
-			// scale follows the same pulse + context multipliers as the ball.
-			node.halo.position.set(x, y, z);
+
 			node.halo.scale.setScalar(o.haloScale * pulseScale * ctxScale);
-			// Halo opacity: base + context + heat only. Selection glow is on
-			// the mesh emissive, not the halo color.
 			const targetHaloOpacity =
 				o.baseHaloOpacity +
 				(o.contextActive ? CONTEXT_HALO : 0) +
 				heat * HEAT_HALO_BOOST;
-			const curHaloOpacity = node.haloMat.opacity;
-			node.haloMat.opacity = curHaloOpacity + (targetHaloOpacity - curHaloOpacity) * 0.18;
+			node.haloMat.opacity += (targetHaloOpacity - node.haloMat.opacity) * 0.18;
 			node.haloMat.color.copy(o.haloColor);
 			node.haloMat.dashSize = 0.10;
 		}
-		// Move the selection follow-light to the selected ball's current position.
-		// Only update when the ball has actually moved (> 0.05) to avoid
-		// re-uploading light uniforms to all 600+ MeshStandardMaterials every frame.
+
+		// Selection follow-light
 		if (selectedId) {
 			const selPos = positions.get(selectedId);
 			if (selPos && selPos.distanceToSquared(_lastLightPos) > 0.0025) {
@@ -938,8 +795,9 @@ export function buildCosmos(state, materials) {
 				_lastLightPos.copy(selPos);
 			}
 		}
+
+		// Link tubes
 		for (const m of linkMeshes) {
-			// Anchor chain line: cheap BufferGeometry update, skip TubeGeometry rebuild.
 			if (m.userData.update) {
 				m.userData.update();
 				continue;
@@ -964,5 +822,6 @@ export function buildCosmos(state, materials) {
 	}
 
 	return { group, nodes, positions, linkMeshes, tick, bumpHeat, setContextActive, setSelected };
+}
 }
 

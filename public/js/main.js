@@ -21,8 +21,9 @@ import { colorForType } from "./colors.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
 	import { getRender, setRender, clearRender, applyToMesh, updateOverlays } from "./planet-styles.js";
-	// ── State ──────────────────────────────────────────────────────────
+	import { initPhysics } from "./physics.js";
 
+	// ── State ──────────────────────────────────────────────────────────
 let snapshot = null;
 
 let scene, camera, renderer, composer, controls;
@@ -56,48 +57,52 @@ const materials = {
 
 // ── Init ───────────────────────────────────────────────────────────
 
-async function init() {
-	// Fetch graph data.
-	const [metaRes, stateRes] = await Promise.all([
-		fetch("/api/meta").then((r) => r.json()),
-		fetch("/api/state").then((r) => r.json()),
-	]);
-	document.getElementById("root-path").textContent = metaRes.root;
-	snapshot = stateRes;
-	const agents = snapshot.objects.filter((o) => o.typeKey === "agent");
-	agents.sort((a, b) => (b.agentStats?.lastActivity ?? 0) - (a.agentStats?.lastActivity ?? 0));
-	contextAgentId = agents[0]?.id ?? null;
-	initAgentChats(agents);
-	setupThree();
-	setupHudGrid(8, 4);
-	buildScenes();
-	bindUI();
-	setupLiveLog({
-		onSelectObject: (id) => select(id, { focus: true }),
-		onEachEvent: (ev) => {
-			// Live events bump heat on the change's owning object plus every
-			// id its tool input/result mentioned. Replay events (the ~50 sent
-			// on connect for context) skip this — their decay would already
-			// be invisible and they'd otherwise paint stale activity as live.
-			if (!ev.replay) {
-				cosmosCtx?.bumpHeat?.(ev.objectId, ev.ts);
-				for (const id of ev.referencedObjects ?? []) {
-					cosmosCtx?.bumpHeat?.(id, ev.ts);
-				}
-				// Any live change on the watched agent or one that references
-				// objects can shift the in-context set; refresh it (debounced).
-				const affectsContext =
-					ev.objectId === contextAgentId ||
-					(ev.referencedObjects ?? []).length > 0;
-				if (affectsContext) scheduleContextRefresh();
-			}
-		},
-	});
-	refreshContextActive();
-	setLanding(snapshot);
+	async function init() {
+		// Init physics engine (WASM) before building scene.
+		await initPhysics();
 
-	animate();
-}
+		// Fetch graph data.
+		const [metaRes, stateRes] = await Promise.all([
+			fetch("/api/meta").then((r) => r.json()),
+			fetch("/api/state").then((r) => r.json()),
+		]);
+		document.getElementById("root-path").textContent = metaRes.root;
+		snapshot = stateRes;
+		const agents = snapshot.objects.filter((o) => o.typeKey === "agent");
+		agents.sort((a, b) => (b.agentStats?.lastActivity ?? 0) - (a.agentStats?.lastActivity ?? 0));
+		contextAgentId = agents[0]?.id ?? null;
+		initAgentChats(agents);
+		setupThree();
+		setupHudGrid(8, 4);
+		buildScenes();
+		bindUI();
+		setupLiveLog({
+			onSelectObject: (id) => select(id, { focus: true }),
+			onEachEvent: (ev) => {
+				// Live events bump heat on the change's owning object plus every
+				// id its tool input/result mentioned. Replay events (the ~50 sent
+				// on connect for context) skip this — their decay would already
+				// be invisible and they'd otherwise paint stale activity as live.
+				if (!ev.replay) {
+					cosmosCtx?.bumpHeat?.(ev.objectId, ev.ts);
+					for (const id of ev.referencedObjects ?? []) {
+						cosmosCtx?.bumpHeat?.(id, ev.ts);
+					}
+					// Any live change on the watched agent or one that references
+					// objects can shift the in-context set; refresh it (debounced).
+					const affectsContext =
+						ev.objectId === contextAgentId ||
+						(ev.referencedObjects ?? []).length > 0;
+					if (affectsContext) scheduleContextRefresh();
+				}
+			},
+		});
+		refreshContextActive();
+		setLanding(snapshot);
+
+		animate();
+	}
+
 
 // In-context object set: which cosmos balls are currently referenced by
 // any in-context block of `contextAgentId`. Refreshed on init and whenever
@@ -1067,7 +1072,7 @@ function animate() {
 	const t = now / 1000;
 	const ray = cursorActive ? raycaster.ray : null;
 	// Cosmos: balls float gently and lean toward the cursor; tubes follow them.
-	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, ray);
+	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, dt, ray);
 	updateOverlays(camera, renderer);
 	if (!activeTween) {
 		// WASD pan: move camera + target in the horizontal plane.
