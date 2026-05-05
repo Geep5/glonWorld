@@ -73,9 +73,12 @@ class ChatWindow {
 
 		DOCK.appendChild(this.panel);
 		// Events
-		header.querySelector(".chat-min").addEventListener("click", () => this.toggleMinimize());
-		header.querySelector(".chat-close").addEventListener("click", () => this.close());
-		sendBtn.addEventListener("click", () => this.send());
+		const minBtn = header.querySelector(".chat-min");
+		const closeBtn = header.querySelector(".chat-close");
+		minBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+		closeBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+		minBtn.addEventListener("click", () => this.toggleMinimize());
+		closeBtn.addEventListener("click", () => this.close());
 		this.input.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
