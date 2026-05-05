@@ -6,6 +6,7 @@
 
 	import { colorForType } from "./colors.js";
 	import { getRender, setRender, clearRender } from "./planet-styles.js";
+	import * as planetForge from "./planet-forge.js";
 
 	const els = {
 		empty: document.getElementById("inspector-empty"),
@@ -221,7 +222,7 @@ function render(detail, changesResponse) {
 	}
 
 	// Style section (all objects) --------------------------------
-	renderStyleSection(obj.id, hex);
+	renderStyleSection(obj.id, hex, obj.name);
 
 	// Content preview -------------------------------------------
 	if (detail.contentPreview) {
@@ -284,7 +285,7 @@ function render(detail, changesResponse) {
 
 	// ── Style section ────────────────────────────────────────────
 
-	function renderStyleSection(objectId, defaultHex) {
+	function renderStyleSection(objectId, defaultHex, objectName) {
 		els.styleSection.hidden = false;
 		const render = getRender(objectId);
 
@@ -300,6 +301,16 @@ function render(detail, changesResponse) {
 		// Wire events once
 		if (!els.styleSection._wired) {
 			els.styleSection._wired = true;
+
+			// Forge button — open AI chat for this planet
+			const forgeBtn = document.createElement("button");
+			forgeBtn.textContent = "Open in Forge";
+			forgeBtn.style.marginBottom = "8px";
+			forgeBtn.addEventListener("click", () => {
+				planetForge.show();
+				planetForge.setTarget(objectId, objectName || objectId.slice(0, 8));
+			});
+			els.styleSection.insertBefore(forgeBtn, els.styleSection.querySelector(".style-field"));
 
 			document.getElementById("insp-style-apply").addEventListener("click", () => {
 				const newRender = {

@@ -21,6 +21,7 @@ import { colorForType } from "./colors.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
 	import { getRender, applyToMesh, updateOverlays } from "./planet-styles.js";
+	import * as planetForge from "./planet-forge.js";
 // ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -185,8 +186,8 @@ function setupThree() {
 	window.addEventListener("planet-render-changed", (e) => {
 		const node = cosmosCtx?.nodes?.get(e.detail.objectId);
 		if (node?.mesh) {
-			const render = getRender(e.detail.objectId);
-			applyToMesh(node.mesh, render);
+			const render = e.detail.render || getRender(e.detail.objectId);
+			if (render) applyToMesh(node.mesh, render);
 		}
 	});
 	canvas.addEventListener("pointermove", onPointerMove);
@@ -517,6 +518,12 @@ function bindUI() {
 			selectedId = null;
 			clearInspector();
 			highlightSelected();
+			planetForge.setTarget(null, "none");
+			return;
+		}
+		// F toggles Planet Forge
+		if (e.key === "f" || e.key === "F") {
+			planetForge.toggle();
 			return;
 		}
 		// WASD / Space pan — ignore when typing in inputs.
@@ -714,12 +721,15 @@ function onDoubleClick(e) {
 
 // ── Selection + highlighting ──────────────────────────────────────
 
-function select(id, { focus = false } = {}) {
-	selectedId = id;
-	showObject(id);
-	highlightSelected();
-	if (focus) focusOnId(id);
-}
+	function select(id, { focus = false } = {}) {
+		selectedId = id;
+		showObject(id);
+		highlightSelected();
+		if (focus) focusOnId(id);
+		// Update planet forge target
+		const node = cosmosCtx?.nodes?.get(id);
+		planetForge.setTarget(id, node?.obj?.name || id?.slice(0, 8));
+	}
 
 function focusOnId(id) {
 	const node = cosmosCtx.nodes.get(id);

@@ -1,8 +1,11 @@
 /**
  * Planet render scripts — freeform JS/CSS/HTML per object.
  *
- * Each planet can have its own canvas renderer (script),
- * plus optional CSS and HTML for an overlay.
+ * Supports two modes:
+ *   1. Canvas 2D script (script field) — draws to a CanvasTexture
+ *   2. Three.js native code (threejs field) — adds child meshes/materials
+ *
+ * Plus optional HTML/CSS overlay.
  * All stored in localStorage; zero DAG impact.
  */
 
@@ -26,8 +29,7 @@ export function clearRender(objectId) {
 
 // ── Active renderer registry ─────────────────────────────────────
 
-// mesh → { canvas, ctx, texture, fn, lastT }
-const activeRenders = new Map();
+const activeRenders = new Map(); // mesh → { kind: "canvas"|"threejs", ... }
 let animating = false;
 
 function startLoop() {
@@ -40,8 +42,16 @@ function tickLoop() {
 	const t = performance.now() / 1000;
 	for (const [mesh, entry] of activeRenders) {
 		if (!mesh.parent) { activeRenders.delete(mesh); continue; }
-		entry.fn(entry.ctx, 256, 128, t, entry.seed);
-		entry.texture.needsUpdate = true;
+		if (entry.kind === "canvas") {
+			entry.fn(entry.ctx, 256, 128, t, entry.seed);
+			entry.texture.needsUpdate = true;
+		} else if (entry.kind === "threejs") {
+			try {
+				entry.fn(THREE, entry.group, entry.seed, t);
+			} catch (err) {
+				// Silently skip frame errors to avoid console spam
+			}
+		}
 	}
 	if (activeRenders.size > 0) requestAnimationFrame(tickLoop);
 	else animating = false;
@@ -58,46 +68,76 @@ export function applyStoredStyle(mesh) {
 
 export function applyToMesh(mesh, render) {
 	if (!mesh || !render) return;
-	const mat = mesh.material;
-	if (!mat) return;
 
 	// Stop any previous renderer on this mesh
 	removeFromMesh(mesh);
 
-	// 1. Canvas renderer (script)
-	if (render.script) {
+	// 1. Three.js native code (preferred)
+	if (render.threejs) {
 		try {
 			const seed = makeSeed(mesh.userData.id);
-			const canvas = document.createElement("canvas");
-			canvas.width = 256;
-			canvas.height = 128;
-			const ctx = canvas.getContext("2d");
-			const fn = new Function("ctx", "W", "H", "t", "seed", render.script);
-			fn(ctx, 256, 128, 0, seed); // initial draw
-			const tex = new THREE.CanvasTexture(canvas);
-			tex.colorSpace = THREE.SRGBColorSpace;
-			tex.wrapS = THREE.RepeatWrapping;
-			tex.anisotropy = 4;
-			mat.map = tex;
-			if (mat.emissiveMap) mat.emissiveMap = tex;
-			mat.needsUpdate = true;
+			// Create or reuse a custom group attached to the mesh
+			let group = mesh.userData._planetGroup;
+			if (!group) {
+				group = new THREE.Group();
+				mesh.add(group);
+				mesh.userData._planetGroup = group;
+			}
+			// Clear previous custom children
+			while (group.children.length > 0) {
+				const child = group.children[0];
+				if (child.geometry) child.geometry.dispose();
+				if (child.material) {
+					if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+					else child.material.dispose();
+				}
+				group.remove(child);
+			}
+			// Execute the AI code
+			const fn = new Function("THREE", "parent", "seed", "time", render.threejs);
+			fn(THREE, group, seed, 0);
 
 			// Store for animation
-			activeRenders.set(mesh, { canvas, ctx, texture: tex, fn, seed });
+			activeRenders.set(mesh, { kind: "threejs", group, fn, seed });
 			startLoop();
 		} catch (err) {
-			console.warn("Planet render error:", err);
+			console.warn("Planet Three.js render error:", err);
 		}
 	}
 
-	// 2. Material color override
-	if (render.color) {
-		mat.color.set(render.color);
+	// 2. Canvas renderer (legacy / alternative)
+	else if (render.script) {
+		const mat = mesh.material;
+		if (mat) {
+			try {
+				const seed = makeSeed(mesh.userData.id);
+				const canvas = document.createElement("canvas");
+				canvas.width = 256;
+				canvas.height = 128;
+				const ctx = canvas.getContext("2d");
+				const fn = new Function("ctx", "W", "H", "t", "seed", render.script);
+				fn(ctx, 256, 128, 0, seed);
+				const tex = new THREE.CanvasTexture(canvas);
+				tex.colorSpace = THREE.SRGBColorSpace;
+				tex.wrapS = THREE.RepeatWrapping;
+				tex.anisotropy = 4;
+				mat.map = tex;
+				if (mat.emissiveMap) mat.emissiveMap = tex;
+				mat.needsUpdate = true;
+
+				activeRenders.set(mesh, { kind: "canvas", canvas, ctx, texture: tex, fn, seed });
+				startLoop();
+			} catch (err) {
+				console.warn("Planet canvas render error:", err);
+			}
+		}
 	}
 
-	// 3. Emissive override
-	if (render.emissive) {
-		mat.emissive.set(render.emissive);
+	// 3. Material color override (always applies)
+	const mat = mesh.material;
+	if (mat) {
+		if (render.color) mat.color.set(render.color);
+		if (render.emissive) mat.emissive.set(render.emissive);
 	}
 
 	// 4. HTML overlay
@@ -105,7 +145,21 @@ export function applyToMesh(mesh, render) {
 }
 
 export function removeFromMesh(mesh) {
-	activeRenders.delete(mesh);
+	const entry = activeRenders.get(mesh);
+	if (entry) {
+		if (entry.kind === "threejs" && entry.group) {
+			while (entry.group.children.length > 0) {
+				const child = entry.group.children[0];
+				if (child.geometry) child.geometry.dispose();
+				if (child.material) {
+					if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+					else child.material.dispose();
+				}
+				entry.group.remove(child);
+			}
+		}
+		activeRenders.delete(mesh);
+	}
 	removeOverlay(mesh);
 }
 
@@ -123,7 +177,7 @@ function makeSeed(str) {
 
 // ── HTML overlay ─────────────────────────────────────────────────
 
-const overlays = new Map(); // objectId → HTMLElement
+const overlays = new Map();
 
 function updateOverlay(mesh, render) {
 	const id = mesh.userData.id;
@@ -158,7 +212,6 @@ function removeOverlayById(id) {
 	}
 }
 
-// Position overlays each frame (called from main.js animate loop)
 export function updateOverlays(camera, renderer) {
 	for (const [id, { div, mesh }] of overlays) {
 		if (!mesh.parent) { div.remove(); overlays.delete(id); continue; }
@@ -176,7 +229,6 @@ export function updateOverlays(camera, renderer) {
 
 export function parseRenderFromText(text) {
 	if (!text) return null;
-	// Look for fenced JSON blocks
 	const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
 	if (fenceMatch) {
 		try {
@@ -189,5 +241,5 @@ export function parseRenderFromText(text) {
 
 function isValidRender(obj) {
 	if (!obj || typeof obj !== "object") return false;
-	return obj.script || obj.css || obj.html || obj.color || obj.emissive;
+	return obj.threejs || obj.script || obj.css || obj.html || obj.color || obj.emissive;
 }

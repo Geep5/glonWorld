@@ -181,6 +181,41 @@ app.post("/api/agents/:id/recall/:blockId", async (req, res) => {
 	}
 });
 
+
+	// Planet Forge — AI-assisted planet styling. Proxies to OpenAI.
+	app.post("/api/planet-forge", async (req, res) => {
+		const { messages, apiKey } = req.body;
+		if (!Array.isArray(messages) || messages.length === 0) {
+			return res.status(400).json({ error: "messages array required" });
+		}
+		const key = apiKey || process.env.OPENAI_API_KEY;
+		if (!key) {
+			return res.status(400).json({ error: "OpenAI API key required. Set OPENAI_API_KEY env var or pass apiKey in request." });
+		}
+		try {
+			const r = await fetch("https://api.openai.com/v1/chat/completions", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"Authorization": `Bearer ${key}`,
+				},
+				body: JSON.stringify({
+					model: "gpt-4o",
+					messages,
+					temperature: 0.8,
+					max_tokens: 2048,
+				}),
+			});
+			if (!r.ok) {
+				const body = await r.text();
+				return res.status(502).json({ error: `OpenAI API error (${r.status})`, body });
+			}
+			const data = await r.json();
+			res.json(data);
+		} catch (err: any) {
+			res.status(503).json({ error: "could not reach OpenAI", detail: err?.message ?? String(err) });
+		}
+	});
 // Wallet pubkeys (local-only, read-only)
 app.get("/api/wallet", (_req, res) => {
 	res.json({ pubkeys: [...getWalletPubkeys()] });
