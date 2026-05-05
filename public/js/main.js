@@ -40,10 +40,10 @@ let contextAgentId = null;
 	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
 	const PAN_SPEED = 25; // world units per second
 
-	// HUD grid config (must match setupHudGrid)
+
+	// HUD grid dimensions (must match setupHudGrid call)
 	const GRID_COLS = 8;
 	const GRID_ROWS = 4;
-	let mouseGridCell = null; // { col, row } or null
 
 	// Shared reusable geometries + materials.
 const materials = {
@@ -713,16 +713,6 @@ let cursorActive = false;
 		mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
 		mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 		cursorActive = e.target === renderer.domElement;
-
-		// Track which HUD grid cell the mouse is in
-		if (cursorActive) {
-			const col = Math.min(GRID_COLS - 1, Math.max(0, Math.floor(e.clientX / (window.innerWidth / GRID_COLS))));
-			const row = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(e.clientY / (window.innerHeight / GRID_ROWS))));
-			mouseGridCell = { col, row };
-		} else {
-			mouseGridCell = null;
-		}
-
 		raycaster.setFromCamera(mouse, camera);
 		const hits = raycaster.intersectObjects(visiblePickables(), false);
 		const first = hits[0]?.object;
@@ -1124,11 +1114,9 @@ function animate() {
 
 		const screen = new THREE.Vector3();
 		const dpr = window.devicePixelRatio || 1;
-		const cellW = window.innerWidth / GRID_COLS;
-		const cellH = window.innerHeight / GRID_ROWS;
-
-		// Show labels for nodes in the same HUD grid cell as the mouse,
-		// plus the selected/hovered node. Hold Shift to show all labels.
+		// Show labels for nodes near the mouse cursor, plus the selected/hovered
+		// node. Hold Shift to show all labels.
+		const LABEL_RADIUS = 160; // CSS pixels
 		for (const [id, node] of cosmosCtx.nodes) {
 			const obj = node.mesh.userData.obj;
 			const isPinned = id === selectedId || id === hoverId;
@@ -1142,10 +1130,10 @@ function animate() {
 			const py = (-screen.y * 0.5 + 0.5) * window.innerHeight;
 
 			if (!isPinned && !keys.shift) {
-				if (!mouseGridCell) continue;
-				const nodeCol = Math.min(GRID_COLS - 1, Math.max(0, Math.floor(px / cellW)));
-				const nodeRow = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(py / cellH)));
-				if (nodeCol !== mouseGridCell.col || nodeRow !== mouseGridCell.row) continue;
+				if (!cursorActive) continue;
+				const dx = px - pointer.x;
+				const dy = py - pointer.y;
+				if (dx * dx + dy * dy > LABEL_RADIUS * LABEL_RADIUS) continue;
 			}
 
 			// Canvas pixel coordinates for drawing

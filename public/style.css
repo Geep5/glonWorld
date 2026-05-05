@@ -52,22 +52,24 @@ html, body {
 	grid-template-columns: repeat(var(--grid-cols, 8), 1fr);
 	grid-template-rows: repeat(var(--grid-rows, 4), 1fr);
 }
-#grid-overlay .grid-cell {
-	position: relative;
-	border-right: 1px solid rgba(255, 255, 255, 0.04);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-#grid-overlay .grid-cell.col-last  { border-right: none; }
-#grid-overlay .grid-cell.row-last  { border-bottom: none; }
-#grid-overlay .grid-cell .grid-label {
-	position: absolute;
-	top: 4px;
-	left: 6px;
-	font: 10px/1 ui-monospace, "SF Mono", Menlo, monospace;
-	letter-spacing: 1px;
-	color: rgba(170, 179, 198, 0.32);
-	user-select: none;
-}
+	#grid-overlay .grid-cell {
+		position: relative;
+		border-right: 1px solid rgba(0, 255, 200, 0.22);
+		border-bottom: 1px solid rgba(0, 255, 200, 0.22);
+		box-shadow: inset 0 0 12px rgba(0, 255, 200, 0.03);
+	}
+	#grid-overlay .grid-cell.col-last  { border-right: none; }
+	#grid-overlay .grid-cell.row-last  { border-bottom: none; }
+	#grid-overlay .grid-cell .grid-label {
+		position: absolute;
+		top: 4px;
+		left: 6px;
+		font: 10px/1 ui-monospace, "SF Mono", Menlo, monospace;
+		letter-spacing: 1px;
+		color: rgba(0, 255, 200, 0.55);
+		text-shadow: 0 0 6px rgba(0, 255, 200, 0.45);
+		user-select: none;
+	}
 
 kbd {
 	display: inline-block;
