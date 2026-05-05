@@ -18,8 +18,9 @@
  * + magnet-displaced ball positions exactly.
  */
 
-import * as THREE from "three";
-import { colorForType } from "./colors.js";
+	import * as THREE from "three";
+	import { colorForType } from "./colors.js";
+	import { applyStoredStyle } from "./planet-styles.js";
 
 
 // \u2500\u2500 Procedural planet textures \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -402,6 +403,7 @@ export function buildCosmos(state, materials) {
 			mesh.position.copy(pos);
 			mesh.scale.setScalar(r);
 			mesh.userData = { kind: "object", id: obj.id, typeKey, obj };
+			applyStoredStyle(mesh);
 			group.add(mesh);
 
 			// Every ball gets one indicator halo — a dashed equator ring.

@@ -1080,3 +1080,63 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 .chat-window .chat-status.sending { color: var(--accent); }
 .chat-window .chat-status.ok { color: var(--ok); }
 .chat-window .chat-status.err { color: var(--err); }
+
+/* ── Inspector style section ────────────────────────────────────── */
+
+.style-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.style-row label {
+	width: 60px;
+	font-size: 11px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.style-row input[type="color"] {
+	width: 32px;
+	height: 24px;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	background: transparent;
+	padding: 0;
+}
+
+.style-row select {
+	flex: 1;
+	background: rgba(255,255,255,0.04);
+	border: 1px solid var(--stroke);
+	border-radius: 4px;
+	padding: 4px 6px;
+	color: var(--text);
+	font-size: 11px;
+}
+
+.style-actions {
+	display: flex;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.style-actions button {
+	flex: 1;
+	background: var(--accent);
+	color: #000;
+	border: none;
+	border-radius: 4px;
+	padding: 5px 0;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.style-actions button:last-child {
+	background: transparent;
+	color: var(--text-muted);
+	border: 1px solid var(--stroke);
+}

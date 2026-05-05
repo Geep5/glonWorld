@@ -1,10 +1,11 @@
-/**
- * Agent Chat Windows — standalone floating panels for each agent.
- *
- * Each window is draggable, minimizable, and closable.
- * Position persists in localStorage per agent.
- */
+	/**
+	 * Agent Chat Windows — standalone floating panels for each agent.
+	 *
+	 * Each window is draggable, minimizable, and closable.
+	 * Position persists in localStorage per agent.
+	 */
 
+	import { parseStyleFromText, setStyle, applyStyle } from "./planet-styles.js";
 const DOCK = document.createElement("div");
 DOCK.id = "chat-dock";
 document.body.appendChild(DOCK);
@@ -203,6 +204,17 @@ class ChatWindow {
 			msg.appendChild(label);
 			msg.appendChild(text);
 			this.history.appendChild(msg);
+		}
+
+		// Check last assistant message for planet-style JSON
+		const lastAssistant = visible.filter((b) => b.kind === "assistant_text").pop();
+		if (lastAssistant?.text) {
+			const style = parseStyleFromText(lastAssistant.text);
+			if (style) {
+				setStyle(this.agentId, style);
+				this.status.textContent = "Planet style applied from agent response! Refresh to see changes.";
+				this.status.className = "chat-status ok";
+			}
 		}
 
 		this.history.scrollTop = this.history.scrollHeight;

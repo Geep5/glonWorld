@@ -89,15 +89,6 @@
 				<div id="insp-agent-stats" class="kv"></div>
 			</div>
 
-			<div class="insp-section" id="insp-chat-section" hidden>
-				<h3>Chat</h3>
-				<div id="insp-chat-history" class="chat-history"></div>
-				<div class="chat-input-row">
-					<input id="insp-chat-input" type="text" placeholder="Message agent…" autocomplete="off" />
-					<button id="insp-chat-send">Send</button>
-				</div>
-				<div id="insp-chat-status" class="chat-status"></div>
-			</div>
 
 			<div class="insp-section" id="insp-scalars-section" hidden>
 				<h3>Fields</h3>
@@ -117,7 +108,43 @@
 				<div id="insp-coin-list" class="token-table"></div>
 			</div>
 
-			<div id="insp-inject" class="insp-recall"></div>
+			<div class="insp-section" id="insp-style-section" hidden>
+				<h3>Style</h3>
+				<div class="style-row">
+					<label>Color</label>
+					<input id="insp-style-color" type="color" />
+					<button id="insp-style-color-reset">Reset</button>
+				</div>
+				<div class="style-row">
+					<label>Surface</label>
+					<select id="insp-style-surface">
+						<option value="">Default</option>
+						<option value="terran">Terran</option>
+						<option value="magma">Magma</option>
+						<option value="ice">Ice</option>
+						<option value="gas">Gas Giant</option>
+						<option value="crystalline">Crystalline</option>
+					</select>
+				</div>
+				<div class="style-row">
+					<label>Features</label>
+					<select id="insp-style-feature">
+						<option value="">None</option>
+						<option value="volcano">Volcano</option>
+						<option value="ring">Ring</option>
+						<option value="moon">Moon</option>
+					</select>
+				</div>
+				<div class="style-row">
+					<label>Emissive</label>
+					<input id="insp-style-emissive" type="color" />
+				</div>
+				<div class="style-actions">
+					<button id="insp-style-apply">Apply</button>
+					<button id="insp-style-clear">Clear All</button>
+				</div>
+				<div id="insp-style-status" class="chat-status"></div>
+			</div>
 			<div id="insp-recall" class="insp-recall"></div>
 			<div class="insp-section" id="insp-content-section" hidden>
 				<h3 id="insp-content-title">Content</h3>

@@ -4,7 +4,8 @@
  * nothing here knows about three.js.
  */
 
-import { colorForType } from "./colors.js";
+	import { colorForType } from "./colors.js";
+	import { getStyle, setStyle, clearStyle, applyStyle } from "./planet-styles.js";
 
 	const els = {
 		empty: document.getElementById("inspector-empty"),
@@ -26,6 +27,12 @@ import { colorForType } from "./colors.js";
 		coinSection: document.getElementById("insp-coin-section"),
 		coinHeader: document.getElementById("insp-coin-header"),
 		coinList: document.getElementById("insp-coin-list"),
+		styleSection: document.getElementById("insp-style-section"),
+		styleColor: document.getElementById("insp-style-color"),
+		styleSurface: document.getElementById("insp-style-surface"),
+		styleFeature: document.getElementById("insp-style-feature"),
+		styleEmissive: document.getElementById("insp-style-emissive"),
+		styleStatus: document.getElementById("insp-style-status"),
 		// Landing placeholder stats
 		stats: document.getElementById("stats"),
 	};
@@ -212,6 +219,9 @@ function render(detail, changesResponse) {
 		els.coinSection.hidden = true;
 	}
 
+	// Style section (all objects) --------------------------------
+	renderStyleSection(obj.id, hex);
+
 	// Content preview -------------------------------------------
 	if (detail.contentPreview) {
 		els.contentSection.hidden = false;
@@ -270,6 +280,54 @@ function render(detail, changesResponse) {
 
 
 
+
+	// ── Style section ────────────────────────────────────────────
+
+	function renderStyleSection(objectId, defaultHex) {
+		els.styleSection.hidden = false;
+		const style = getStyle(objectId);
+
+		// Set current values
+		els.styleColor.value = style?.color ?? defaultHex;
+		els.styleSurface.value = style?.surfaceType ?? "";
+		els.styleFeature.value = style?.features?.[0]?.type ?? "";
+		els.styleEmissive.value = style?.emissive ?? "#000000";
+		els.styleStatus.textContent = style ? "Custom style active" : "Using defaults";
+		els.styleStatus.className = style ? "chat-status ok" : "chat-status";
+
+		// Wire events once
+		if (!els.styleSection._wired) {
+			els.styleSection._wired = true;
+
+			document.getElementById("insp-style-apply").addEventListener("click", () => {
+				const newStyle = {
+					color: els.styleColor.value,
+					surfaceType: els.styleSurface.value || undefined,
+					emissive: els.styleEmissive.value,
+				};
+				if (els.styleFeature.value) {
+					newStyle.features = [{ type: els.styleFeature.value, scale: 1 }];
+				}
+				setStyle(objectId, newStyle);
+				els.styleStatus.textContent = "Style saved — refresh scene to see changes";
+				els.styleStatus.className = "chat-status ok";
+			});
+
+			document.getElementById("insp-style-clear").addEventListener("click", () => {
+				clearStyle(objectId);
+				els.styleColor.value = defaultHex;
+				els.styleSurface.value = "";
+				els.styleFeature.value = "";
+				els.styleEmissive.value = "#000000";
+				els.styleStatus.textContent = "Style cleared — refresh scene to see defaults";
+				els.styleStatus.className = "chat-status";
+			});
+
+			document.getElementById("insp-style-color-reset").addEventListener("click", () => {
+				els.styleColor.value = defaultHex;
+			});
+		}
+	}
 
 	// ── DOM helpers ────────────────────────────────────────────────
 
