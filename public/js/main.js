@@ -165,7 +165,7 @@ function setupThree() {
 	// 5000\u20136000K, which reads as a soft golden cream, not a clinical white.
 	// Decoupling cast color from surface color is the same trick lensflares
 	// use: a green star can still throw warm sunlight on its system.
-	const graiceSun = new THREE.PointLight(0xffe0a8, 5.5, 220, 1.4);
+	const graiceSun = new THREE.PointLight(0xffe0a8, 1.0, 220, 1.4);
 	graiceSun.position.set(0, 0, 0);
 	scene.add(graiceSun);
 

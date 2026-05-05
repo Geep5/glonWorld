@@ -384,20 +384,14 @@ export function buildCosmos(state, materials) {
 					toneMapped: false,
 				});
 			} else {
-				// Everything else is a planet: reflective surface, almost no self-
-				// glow at rest, lit by Graice's PointLight from the origin.
-				// Slightly raised metalness + lowered roughness so nearby PointLights
-				// (e.g. the selection follow-light) create visible specular highlights.
+				// Everything else is a planet: Lambert (no specular/reflection)
+				// for performance. Per-vertex lighting is much cheaper than PBR.
 				baseEmissive = 0.05;
-				mat = new THREE.MeshStandardMaterial({
-					// White color so the procedural texture's tones come through pure;
-					// emissive still uses the type color so heat bumps tint the world.
+				mat = new THREE.MeshLambertMaterial({
 					color: 0xffffff,
 					map: surface,
 					emissive: color,
 					emissiveIntensity: baseEmissive,
-					metalness: 0.12,
-					roughness: 0.72,
 				});
 			}
 			const mesh = new THREE.Mesh(typeKey === "chain.anchor" ? materials.sphereSmall : materials.sphere, mat);
@@ -557,6 +551,13 @@ export function buildCosmos(state, materials) {
 					o.baseX = pos.x;
 					o.baseY = pos.y;
 					o.baseZ = pos.z;
+				}
+				// Head anchor (newest) gets a size + glow boost so the chain tip is obvious.
+				if (i === anchorChain.length - 1) {
+					node.mesh.scale.multiplyScalar(1.6);
+					if (node.mesh.material.emissiveIntensity !== undefined) {
+						node.mesh.material.emissiveIntensity = 0.8;
+					}
 				}
 			}
 		}
