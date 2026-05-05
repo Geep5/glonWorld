@@ -176,27 +176,27 @@ class ChatWindow {
 
 	savePosition() {
 		try {
-			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
+			const raw = localStorage.getItem(`glonAstrolabe.chatWin.${this.agentId}`);
 			const pos = raw ? JSON.parse(raw) : {};
 			pos.left = this.panel.style.left;
 			pos.top = this.panel.style.top;
-			localStorage.setItem(`glonAstrolabe.chatPos.${this.agentId}`, JSON.stringify(pos));
+			localStorage.setItem(`glonAstrolabe.chatWin.${this.agentId}`, JSON.stringify(pos));
 		} catch { /* ignore */ }
 	}
 
 	saveSize() {
 		try {
-			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
+			const raw = localStorage.getItem(`glonAstrolabe.chatWin.${this.agentId}`);
 			const pos = raw ? JSON.parse(raw) : {};
 			pos.width = parseFloat(this.panel.style.width) || this.panel.offsetWidth;
 			pos.height = parseFloat(this.panel.style.height) || this.panel.offsetHeight;
-			localStorage.setItem(`glonAstrolabe.chatPos.${this.agentId}`, JSON.stringify(pos));
+			localStorage.setItem(`glonAstrolabe.chatWin.${this.agentId}`, JSON.stringify(pos));
 		} catch { /* ignore */ }
 	}
 
 	restorePosition() {
 		try {
-			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
+			const raw = localStorage.getItem(`glonAstrolabe.chatWin.${this.agentId}`);
 			if (raw) {
 				const pos = JSON.parse(raw);
 				if (pos.left != null) this.panel.style.left = pos.left;
