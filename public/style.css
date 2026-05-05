@@ -1125,8 +1125,6 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 		max-height: 200px;
 		overflow-y: auto;
 		padding: 4px 0;
-		border-top: 1px solid var(--stroke);
-		border-bottom: 1px solid var(--stroke);
 	}
 
 	#insp-style-section .forge-msg {
