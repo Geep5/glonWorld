@@ -109,32 +109,13 @@
 			</div>
 
 			<div class="insp-section" id="insp-style-section" hidden>
-				<h3>Planet Render</h3>
-				<div class="style-field">
-					<label>Color</label>
-					<input id="insp-style-color" type="color" />
+				<h3 class="collapsible" data-target="insp-style-body">Custom Planet</h3>
+				<div id="insp-style-body" style="display:none">
+					<div class="style-note">
+						Press <kbd>F</kbd> to open <b>Planet Forge</b> and chat with the AI to design this planet.
+					</div>
+					<div id="insp-style-status" class="chat-status"></div>
 				</div>
-				<div class="style-field">
-					<label>Emissive</label>
-					<input id="insp-style-emissive" type="color" />
-				</div>
-				<div class="style-field">
-					<label>Canvas Script</label>
-					<textarea id="insp-style-script" rows="6" placeholder="function body: ctx, W, H, t, seed"></textarea>
-				</div>
-				<div class="style-field">
-					<label>HTML Overlay</label>
-					<textarea id="insp-style-html" rows="3" placeholder="HTML content"></textarea>
-				</div>
-				<div class="style-field">
-					<label>Overlay CSS</label>
-					<textarea id="insp-style-css" rows="3" placeholder="CSS rules"></textarea>
-				</div>
-				<div class="style-actions">
-					<button id="insp-style-apply">Apply</button>
-					<button id="insp-style-clear">Reset</button>
-				</div>
-				<div id="insp-style-status" class="chat-status"></div>
 			</div>
 			<div id="insp-recall" class="insp-recall"></div>
 			<div class="insp-section" id="insp-content-section" hidden>

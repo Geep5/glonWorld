@@ -5,8 +5,7 @@
  */
 
 	import { colorForType } from "./colors.js";
-	import { getRender, setRender, clearRender } from "./planet-styles.js";
-	import * as planetForge from "./planet-forge.js";
+	import { getRender } from "./planet-styles.js";
 
 	const els = {
 		empty: document.getElementById("inspector-empty"),
@@ -29,11 +28,6 @@
 		coinHeader: document.getElementById("insp-coin-header"),
 		coinList: document.getElementById("insp-coin-list"),
 		styleSection: document.getElementById("insp-style-section"),
-		styleColor: document.getElementById("insp-style-color"),
-		styleEmissive: document.getElementById("insp-style-emissive"),
-		styleScript: document.getElementById("insp-style-script"),
-		styleHtml: document.getElementById("insp-style-html"),
-		styleCss: document.getElementById("insp-style-css"),
 		styleStatus: document.getElementById("insp-style-status"),
 		// Landing placeholder stats
 		stats: document.getElementById("stats"),
@@ -222,7 +216,7 @@ function render(detail, changesResponse) {
 	}
 
 	// Style section (all objects) --------------------------------
-	renderStyleSection(obj.id, hex, obj.name);
+	renderStyleSection(obj.id);
 
 	// Content preview -------------------------------------------
 	if (detail.contentPreview) {
@@ -285,59 +279,23 @@ function render(detail, changesResponse) {
 
 	// ── Style section ────────────────────────────────────────────
 
-	function renderStyleSection(objectId, defaultHex, objectName) {
+	function renderStyleSection(objectId) {
 		els.styleSection.hidden = false;
 		const render = getRender(objectId);
-
-		// Set current values
-		els.styleColor.value = render?.color ?? defaultHex;
-		els.styleEmissive.value = render?.emissive ?? "#000000";
-		els.styleScript.value = render?.script ?? "";
-		els.styleHtml.value = render?.html ?? "";
-		els.styleCss.value = render?.css ?? "";
 		els.styleStatus.textContent = render ? "Custom render active" : "Using defaults";
 		els.styleStatus.className = render ? "chat-status ok" : "chat-status";
 
-		// Wire events once
+		// Wire collapsible toggle once
 		if (!els.styleSection._wired) {
 			els.styleSection._wired = true;
-
-			// Forge button — open AI chat for this planet
-			const forgeBtn = document.createElement("button");
-			forgeBtn.textContent = "Open in Forge";
-			forgeBtn.style.marginBottom = "8px";
-			forgeBtn.addEventListener("click", () => {
-				planetForge.show();
-				planetForge.setTarget(objectId, objectName || objectId.slice(0, 8));
-			});
-			els.styleSection.insertBefore(forgeBtn, els.styleSection.querySelector(".style-field"));
-
-			document.getElementById("insp-style-apply").addEventListener("click", () => {
-				const newRender = {
-					color: els.styleColor.value,
-					emissive: els.styleEmissive.value,
-					script: els.styleScript.value.trim() || undefined,
-					html: els.styleHtml.value.trim() || undefined,
-					css: els.styleCss.value.trim() || undefined,
-				};
-				setRender(objectId, newRender);
-				els.styleStatus.textContent = "Render applied";
-				els.styleStatus.className = "chat-status ok";
-				// Notify main.js to update the mesh immediately
-				window.dispatchEvent(new CustomEvent("planet-render-changed", { detail: { objectId } }));
-			});
-
-			document.getElementById("insp-style-clear").addEventListener("click", () => {
-				clearRender(objectId);
-				els.styleColor.value = defaultHex;
-				els.styleEmissive.value = "#000000";
-				els.styleScript.value = "";
-				els.styleHtml.value = "";
-				els.styleCss.value = "";
-				els.styleStatus.textContent = "Render cleared";
-				els.styleStatus.className = "chat-status";
-				window.dispatchEvent(new CustomEvent("planet-render-changed", { detail: { objectId } }));
-			});
+			const header = els.styleSection.querySelector(".collapsible");
+			const body = document.getElementById("insp-style-body");
+			if (header && body) {
+				header.style.cursor = "pointer";
+				header.addEventListener("click", () => {
+					body.style.display = body.style.display === "none" ? "block" : "none";
+				});
+			}
 		}
 	}
 

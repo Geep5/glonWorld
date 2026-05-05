@@ -1082,69 +1082,37 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 .chat-window .chat-status.err { color: var(--err); }
 
 /* ── Inspector style section ────────────────────────────────────── */
+	/* ── Inspector Custom Planet section ──────────────────────────── */
 
-	.style-field {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-bottom: 8px;
-	}
-
-	.style-field label {
+	.style-note {
 		font-size: 11px;
 		color: var(--text-muted);
-		font-weight: 600;
+		line-height: 1.5;
+		padding: 4px 0 8px;
 	}
 
-	.style-field input[type="color"] {
-		width: 32px;
-		height: 24px;
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-		background: transparent;
-		padding: 0;
-	}
-
-	.style-field textarea {
-		background: rgba(255,255,255,0.04);
+	.style-note kbd {
+		background: rgba(255,255,255,0.08);
 		border: 1px solid var(--stroke);
-		border-radius: 4px;
-		padding: 6px 8px;
-		color: var(--text);
-		font-size: 11px;
-		font-family: ui-monospace, monospace;
-		resize: vertical;
-		outline: none;
+		border-radius: 3px;
+		padding: 1px 4px;
+		font-size: 10px;
 	}
 
-	.style-field textarea:focus {
-		border-color: var(--accent);
+	.collapsible {
+		cursor: pointer;
+		user-select: none;
 	}
 
-.style-actions {
-	display: flex;
-	gap: 6px;
-	margin-top: 8px;
-}
+	.collapsible::after {
+		content: " ▼";
+		font-size: 10px;
+		color: var(--text-muted);
+	}
 
-.style-actions button {
-	flex: 1;
-	background: var(--accent);
-	color: #000;
-	border: none;
-	border-radius: 4px;
-	padding: 5px 0;
-	font-size: 11px;
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.style-actions button:last-child {
-	background: transparent;
-	color: var(--text-muted);
-	border: 1px solid var(--stroke);
-}
+	.collapsible.expanded::after {
+		content: " ▲";
+	}
 
 /* ── Planet HTML overlays ──────────────────────────────────────── */
 
