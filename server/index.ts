@@ -67,6 +67,30 @@ app.get("/api/agents/:id/context", (req, res) => {
 	res.json({ agentId: req.params.id, agentName: c.agent.name, objectIds: c.objectIds });
 });
 
+	// Send a message to an agent. Proxies to the glon daemon at GLON_DISPATCH_URL.
+	app.post("/api/agents/:id/chat", async (req, res) => {
+		const { id } = req.params;
+		const { message } = req.body;
+		if (!message || typeof message !== "string") {
+			return res.status(400).json({ error: "message required" });
+		}
+		const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+		try {
+			const r = await fetch(dispatchUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ prefix: "/agent", action: "ask", args: [id, message] }),
+			});
+			if (!r.ok) {
+				const body = await r.text();
+				return res.status(502).json({ error: `glon daemon dispatch failed (${r.status})`, body });
+			}
+			const data = await r.json();
+			res.json({ ok: true, agentId: id, message, result: data.result ?? data });
+		} catch (err: any) {
+			res.status(503).json({ error: "could not reach glon daemon", detail: err?.message ?? String(err) });
+		}
+	});
 // Inject an object into an agent's context: post a user_text via /agent ask
 // describing the object. Triggers one assistant turn but the reference stays
 // in context for every subsequent turn until the next compaction.

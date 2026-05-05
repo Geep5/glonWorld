@@ -811,3 +811,102 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	border-left: 2px solid #ffd700;
 	padding-left: 6px;
 }
+/* ── Chat panel ─────────────────────────────────────────────────── */
+
+.chat-history {
+	max-height: 300px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 4px 0;
+}
+
+.chat-msg {
+	padding: 6px 10px;
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.chat-msg.user {
+	background: rgba(94, 234, 212, 0.1);
+	border: 1px solid rgba(94, 234, 212, 0.2);
+	align-self: flex-end;
+	margin-left: 20px;
+}
+
+.chat-msg.assistant {
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid var(--stroke);
+	align-self: flex-start;
+	margin-right: 20px;
+}
+
+.chat-msg.tool {
+	background: rgba(255, 200, 87, 0.06);
+	border: 1px dashed rgba(255, 200, 87, 0.2);
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.chat-msg .chat-label {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	margin-bottom: 2px;
+	opacity: 0.6;
+}
+
+.chat-msg.user .chat-label { color: var(--accent); }
+.chat-msg.assistant .chat-label { color: var(--text); }
+.chat-msg.tool .chat-label { color: var(--warn); }
+
+.chat-input-row {
+	display: flex;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.chat-input-row input {
+	flex: 1;
+	background: rgba(255,255,255,0.04);
+	border: 1px solid var(--stroke);
+	border-radius: 6px;
+	padding: 6px 10px;
+	color: var(--text);
+	font-size: 12px;
+	outline: none;
+}
+
+.chat-input-row input:focus {
+	border-color: var(--accent);
+}
+
+.chat-input-row button {
+	background: var(--accent);
+	color: #000;
+	border: none;
+	border-radius: 6px;
+	padding: 6px 14px;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.chat-input-row button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.chat-status {
+	font-size: 11px;
+	color: var(--text-muted);
+	margin-top: 4px;
+	min-height: 16px;
+}
+
+.chat-status.sending { color: var(--accent); }
+.chat-status.ok { color: var(--ok); }
+.chat-status.err { color: var(--err); }
