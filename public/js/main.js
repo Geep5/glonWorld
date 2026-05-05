@@ -572,12 +572,12 @@ function bindUI() {
 		applyTimeFilter();
 	});
 
-	// Draggable panels --------------------------------------------
-	makeDraggable("legend",    ".panel-grip", "glonAstrolabe.panelPos.legend");
-	makeDraggable("jobs",      ".panel-grip", "glonAstrolabe.panelPos.jobs");
-	makeDraggable("inspector", ".panel-grip", "glonAstrolabe.panelPos.inspector");
-	makeDraggable("crypto",    ".panel-grip", "glonAstrolabe.panelPos.crypto");
-	makeDraggable("livelog",   ".panel-grip", "glonAstrolabe.panelPos.livelog");
+		// Draggable panels — whole top 36px is the grab area
+		makeDraggable("legend",    null, "glonAstrolabe.panelPos.legend");
+		makeDraggable("jobs",      null, "glonAstrolabe.panelPos.jobs");
+		makeDraggable("inspector", null, "glonAstrolabe.panelPos.inspector");
+		makeDraggable("crypto",    null, "glonAstrolabe.panelPos.crypto");
+		makeDraggable("livelog",   null, "glonAstrolabe.panelPos.livelog");
 	window.addEventListener("resize", reclampDraggablePanels);
 }
 
@@ -1131,65 +1131,69 @@ function columnLabel(idx) {
 const HANDLE_MARGIN = 40;
 const draggablePanels = new Set();
 
-function makeDraggable(panelId, handleSelector, storageKey) {
-	const panel = document.getElementById(panelId);
-	if (!panel) return;
-	const handle = panel.querySelector(handleSelector);
-	if (!handle) return;
-	draggablePanels.add(panel);
+	function makeDraggable(panelId, handleSelector, storageKey) {
+		const panel = document.getElementById(panelId);
+		if (!panel) return;
+		draggablePanels.add(panel);
 
-	// Restore saved position. We only restore { left, top } \u2014 width and
-	// height stay under CSS control so theme/responsive changes still flow.
-	try {
-		const raw = localStorage.getItem(storageKey);
-		if (raw) {
-			const saved = JSON.parse(raw);
-			if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
-				// Defer one frame so layout is settled before we measure.
-				requestAnimationFrame(() => applyClampedPosition(panel, saved.left, saved.top));
+		// Restore saved position.
+		try {
+			const raw = localStorage.getItem(storageKey);
+			if (raw) {
+				const saved = JSON.parse(raw);
+				if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) {
+					requestAnimationFrame(() => applyClampedPosition(panel, saved.left, saved.top));
+				}
 			}
-		}
-	} catch { /* corrupt entry; ignore */ }
+		} catch { /* ignore */ }
 
-	let pointerId = null;
-	let offsetX = 0;
-	let offsetY = 0;
+		let pointerId = null;
+		let offsetX = 0;
+		let offsetY = 0;
 
-	handle.addEventListener("pointerdown", (e) => {
-		if (e.button !== 0) return;
-		const rect = panel.getBoundingClientRect();
-		offsetX = e.clientX - rect.left;
-		offsetY = e.clientY - rect.top;
-		// Pin the panel to absolute top/left so subsequent moves are coherent
-		// regardless of which CSS anchor (right/bottom) it started with.
-		applyAbsolutePosition(panel, rect.left, rect.top);
-		pointerId = e.pointerId;
-		handle.setPointerCapture(pointerId);
-		panel.classList.add("panel-dragging");
-		e.preventDefault();
-		e.stopPropagation();
-	});
+		// If a handle selector is provided, only that element starts the drag.
+		// Otherwise the whole top 36px of the panel is the drag area.
+		const target = handleSelector ? panel.querySelector(handleSelector) : panel;
+		if (!target) return;
 
-	handle.addEventListener("pointermove", (e) => {
-		if (e.pointerId !== pointerId) return;
-		applyClampedPosition(panel, e.clientX - offsetX, e.clientY - offsetY);
-	});
+		target.addEventListener("pointerdown", (e) => {
+			if (e.button !== 0) return;
+			const rect = panel.getBoundingClientRect();
+			// When no handle selector, only respond to clicks in the top 36px
+			if (!handleSelector) {
+				const localY = e.clientY - rect.top;
+				if (localY > 36) return;
+			}
+			offsetX = e.clientX - rect.left;
+			offsetY = e.clientY - rect.top;
+			applyAbsolutePosition(panel, rect.left, rect.top);
+			pointerId = e.pointerId;
+			target.setPointerCapture(pointerId);
+			panel.classList.add("panel-dragging");
+			e.preventDefault();
+			e.stopPropagation();
+		});
 
-	const finish = (e) => {
-		if (e.pointerId !== pointerId) return;
-		if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
-		pointerId = null;
-		panel.classList.remove("panel-dragging");
-		const left = parseFloat(panel.style.left);
-		const top  = parseFloat(panel.style.top);
-		if (Number.isFinite(left) && Number.isFinite(top)) {
-			try { localStorage.setItem(storageKey, JSON.stringify({ left, top })); }
-			catch { /* quota / private mode; non-fatal */ }
-		}
-	};
-	handle.addEventListener("pointerup", finish);
-	handle.addEventListener("pointercancel", finish);
-}
+		target.addEventListener("pointermove", (e) => {
+			if (e.pointerId !== pointerId) return;
+			applyClampedPosition(panel, e.clientX - offsetX, e.clientY - offsetY);
+		});
+
+		const finish = (e) => {
+			if (e.pointerId !== pointerId) return;
+			if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+			pointerId = null;
+			panel.classList.remove("panel-dragging");
+			const left = parseFloat(panel.style.left);
+			const top = parseFloat(panel.style.top);
+			if (Number.isFinite(left) && Number.isFinite(top)) {
+				try { localStorage.setItem(storageKey, JSON.stringify({ left, top })); }
+				catch { /* ignore */ }
+			}
+		};
+		target.addEventListener("pointerup", finish);
+		target.addEventListener("pointercancel", finish);
+	}
 
 function applyAbsolutePosition(panel, left, top) {
 	panel.style.left   = left + "px";
