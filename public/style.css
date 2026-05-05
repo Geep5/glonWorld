@@ -1204,3 +1204,22 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	#insp-style-section .forge-inputrow button:hover:not(:disabled) {
 		filter: brightness(1.1);
 	}
+
+	#insp-style-section .collapsible {
+		cursor: pointer;
+		user-select: none;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	#insp-style-section .collapsible::after {
+		content: "▼";
+		font-size: 10px;
+		color: var(--text-muted);
+		transition: transform 150ms ease;
+	}
+
+	#insp-style-section .collapsible.expanded::after {
+		content: "▲";
+	}

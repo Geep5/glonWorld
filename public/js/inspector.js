@@ -300,6 +300,19 @@ function render(detail, changesResponse) {
 	function renderStyleSection(objectId) {
 		els.styleSection.hidden = false;
 		planetForge.setTarget(objectId);
+
+		if (!els.styleSection._wired) {
+			els.styleSection._wired = true;
+			const header = els.styleSection.querySelector(".collapsible");
+			const body = document.getElementById("insp-style-body");
+			if (header && body) {
+				header.addEventListener("click", () => {
+					const isHidden = body.style.display === "none";
+					body.style.display = isHidden ? "block" : "none";
+					header.classList.toggle("expanded", isHidden);
+				});
+			}
+		}
 	}
 
 	// ── DOM helpers ────────────────────────────────────────────────

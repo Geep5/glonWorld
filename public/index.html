@@ -108,20 +108,6 @@
 				<div id="insp-coin-list" class="token-table"></div>
 			</div>
 
-			<div class="insp-section" id="insp-style-section" hidden>
-				<h3>Custom Planet</h3>
-				<div class="forge-keyrow">
-					<input type="password" id="insp-forge-key" placeholder="OpenAI API key" />
-					<button id="insp-forge-key-save">Save</button>
-				</div>
-				<div class="forge-history" id="insp-forge-history"></div>
-				<div class="forge-status" id="insp-forge-status"></div>
-				<div class="forge-inputrow">
-					<input type="text" id="insp-forge-input" placeholder="Describe your planet..." />
-					<button id="insp-forge-send">Send</button>
-					<button id="insp-forge-apply" disabled>Apply</button>
-				</div>
-			</div>
 			<div id="insp-recall" class="insp-recall"></div>
 			<div class="insp-section" id="insp-content-section" hidden>
 				<h3 id="insp-content-title">Content</h3>
@@ -133,6 +119,23 @@
 					<span class="count" id="insp-change-count"></span>
 				</h3>
 				<div id="insp-changes" class="change-dag"></div>
+			</div>
+
+			<div class="insp-section" id="insp-style-section" hidden>
+				<h3 class="collapsible">Custom Planet</h3>
+				<div id="insp-style-body" style="display:none">
+					<div class="forge-keyrow">
+						<input type="password" id="insp-forge-key" placeholder="OpenAI API key" />
+						<button id="insp-forge-key-save">Save</button>
+					</div>
+					<div class="forge-history" id="insp-forge-history"></div>
+					<div class="forge-status" id="insp-forge-status"></div>
+					<div class="forge-inputrow">
+						<input type="text" id="insp-forge-input" placeholder="Describe your planet..." />
+						<button id="insp-forge-send">Send</button>
+						<button id="insp-forge-apply" disabled>Apply</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	</aside>
