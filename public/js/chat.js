@@ -198,9 +198,10 @@ class ChatWindow {
 			if (b.kind === "user_text") {
 				const m = displayText.match(/^\[from .+? on .+?\]\s*/);
 				if (m) displayText = displayText.slice(m[0].length);
+				text.textContent = displayText;
+			} else {
+				text.innerHTML = renderMarkdown(displayText);
 			}
-			text.textContent = displayText;
-
 			msg.appendChild(label);
 			msg.appendChild(text);
 			this.history.appendChild(msg);
@@ -329,4 +330,66 @@ class ChatWindow {
 	function escapeHtml(s) {
 		if (!s) return "";
 		return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+	}
+
+	// Lightweight markdown → HTML (headings, bold, italic, code, code blocks, links, lists, paragraphs)
+	function renderMarkdown(text) {
+		if (!text) return "";
+		let html = escapeHtml(text);
+
+		// Code blocks (fenced)
+		html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+			return `<pre class="chat-code-block"${lang ? ` data-lang="${lang}"` : ""}><code>${code.trim()}</code></pre>`;
+		});
+
+		// Inline code
+		html = html.replace(/`([^`]+)`/g, "<code class='chat-code-inline'>$1</code>");
+
+		// Headings
+		html = html.replace(/^#{1,6}\s+(.+)$/gm, (_, content) => `<strong class="chat-md-heading">${content}</strong>`);
+
+		// Bold
+		html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+		html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+
+		// Italic
+		html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+		html = html.replace(/_([^_]+)_/g, "<em>$1</em>");
+
+		// Links
+		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+		// Strikethrough
+		html = html.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+
+		// Lists (- or * at start of line)
+		const lines = html.split("\n");
+		let inList = false;
+		const out = [];
+		for (const line of lines) {
+			const listMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+			if (listMatch) {
+				if (!inList) { out.push("<ul class='chat-md-list'>"); inList = true; }
+				out.push(`<li>${listMatch[2]}</li>`);
+			} else {
+				if (inList) { out.push("</ul>"); inList = false; }
+				out.push(line);
+			}
+		}
+		if (inList) out.push("</ul>");
+		html = out.join("\n");
+
+		// Blockquotes
+		html = html.replace(/^\s*>\s*(.+)$/gm, "<blockquote class='chat-md-quote'>$1</blockquote>");
+
+		// Paragraphs: wrap non-empty lines that aren't already block-level
+		html = html.split("\n").map(line => {
+			const trimmed = line.trim();
+			if (!trimmed) return "";
+			if (/^<(pre|ul|blockquote|li)/.test(trimmed)) return line;
+			if (/^<\/ul>/.test(trimmed)) return line;
+			return `<p class="chat-md-p">${line}</p>`;
+		}).join("\n");
+
+		return html;
 	}
