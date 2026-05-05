@@ -400,8 +400,18 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 		agentStats: state.typeKey === "agent" ? computeAgentStats(state) : undefined,
 	};
 
+	// Eagerly free content bytes; they are reloaded on-demand in getObjectDetail.
+	state.content = new Uint8Array(0);
+
 	return { object, state, changes, blocks, tools, outLinks, coinState };
-}
+	}
+
+	// Helper: recompute state for a single object when content is needed on-demand
+	function recomputeStateForObject(objectId: string): ObjectState | null {
+		const changes = readChangesForObject(objectId);
+		if (changes.length === 0) return null;
+		try { return computeState(changes); } catch { return null; }
+	}
 
 // ── Cache layer ─────────────────────────────────────────────────
 //
@@ -686,14 +696,16 @@ export function getObjectDetail(id: string): {
 	}
 
 	let contentPreview: string | undefined;
-	if (po.state.content.byteLength > 0) {
+	// Content is cleared in buildPerObject to save RAM; recompute on demand.
+	const contentState = po.state.content.byteLength > 0 ? po.state : recomputeStateForObject(id);
+	if (contentState && contentState.content.byteLength > 0) {
 		const limit = 2000;
-		const bytes = po.state.content.byteLength > limit ? po.state.content.slice(0, limit) : po.state.content;
+		const bytes = contentState.content.byteLength > limit ? contentState.content.slice(0, limit) : contentState.content;
 		try {
 			contentPreview = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-			if (po.state.content.byteLength > limit) contentPreview += `\n…[${po.state.content.byteLength - limit} more bytes]`;
+			if (contentState.content.byteLength > limit) contentPreview += `\n…[${contentState.content.byteLength - limit} more bytes]`;
 		} catch {
-			contentPreview = `<${po.state.content.byteLength} bytes binary>`;
+			contentPreview = `<${contentState.content.byteLength} bytes binary>`;
 		}
 	}
 
