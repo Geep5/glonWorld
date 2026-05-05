@@ -506,7 +506,61 @@ export function buildCosmos(state, materials) {
 		o.baseZ = newPos.z;
 	}
 
+	// Anchor chain: arrange anchors in a 3D helix.
+	const anchors = state.objects.filter((o) => o.typeKey === "chain.anchor");
+	const anchorChain = [];
+	if (anchors.length > 1) {
+		const anchorById = new Map(anchors.map((a) => [a.id, a]));
+		const seen = new Set();
+		// Find genesis (no previous_anchor or previous_anchor not in our set)
+		let head = anchors.find((a) => {
+			const prev = a.scalars?.previous_anchor;
+			return !prev || !anchorById.has(String(prev));
+		});
+		if (!head) {
+			head = [...anchors].sort((a, b) => Number(a.scalars?.height ?? 0) - Number(b.scalars?.height ?? 0))[0];
+		}
+		// Walk forward by building a next-map from previous_anchor
+		const nextOf = new Map();
+		for (const a of anchors) {
+			const prev = String(a.scalars?.previous_anchor ?? "");
+			if (prev && anchorById.has(prev)) nextOf.set(prev, a.id);
+		}
+		let curId = head?.id;
+		while (curId && !seen.has(curId)) {
+			seen.add(curId);
+			const a = anchorById.get(curId);
+			if (!a) break;
+			anchorChain.push(a);
+			curId = nextOf.get(curId);
+		}
 
+		if (anchorChain.length > 1) {
+			const R0 = 15;
+			const DR = 0.02;
+			const DTHETA = 0.02;
+			const DY = 0.03;
+			const Y0 = -25;
+			for (let i = 0; i < anchorChain.length; i++) {
+				const obj = anchorChain[i];
+				const node = nodes.get(obj.id);
+				if (!node) continue;
+				const theta = i * DTHETA;
+				const r = R0 + i * DR;
+				const y = i * DY + Y0;
+				const pos = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r);
+				positions.get(obj.id).copy(pos);
+				node.mesh.position.copy(pos);
+				if (node.halo) node.halo.position.copy(pos);
+				const o = orbits.get(obj.id);
+				if (o) {
+					o.baseX = pos.x;
+					o.baseY = pos.y;
+					o.baseZ = pos.z;
+				}
+			}
+		}
+	}
 
 	// Links --------------------------------------------------------
 	const linkMeshes = [];
@@ -543,6 +597,35 @@ export function buildCosmos(state, materials) {
 		mesh.userData = { kind: "link", link, isLineage, linkWidth: style.width };
 		group.add(mesh);
 		linkMeshes.push(mesh);
+	}
+
+	// Anchor chain tubes (after linkMeshes exists)
+	if (anchorChain.length > 1) {
+		const CHAIN_STYLE = { color: "#fbbf24", opacity: 0.55, width: 0.04 };
+		for (let i = 1; i < anchorChain.length; i++) {
+			const a = positions.get(anchorChain[i - 1].id);
+			const b = positions.get(anchorChain[i].id);
+			if (!a || !b) continue;
+			const mid = a.clone().add(b).multiplyScalar(0.5);
+			const lift = Math.max(0.5, a.distanceTo(b) * 0.15);
+			mid.add(new THREE.Vector3(0, lift, 0));
+			const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
+			const geom = new THREE.TubeGeometry(curve, 32, CHAIN_STYLE.width, 6, false);
+			const mat = new THREE.MeshBasicMaterial({
+				color: new THREE.Color(CHAIN_STYLE.color),
+				transparent: true,
+				opacity: CHAIN_STYLE.opacity,
+			});
+			const mesh = new THREE.Mesh(geom, mat);
+			mesh.userData = {
+				kind: "link",
+				link: { sourceId: anchorChain[i - 1].id, targetId: anchorChain[i].id },
+				isLineage: false,
+				linkWidth: CHAIN_STYLE.width,
+			};
+			group.add(mesh);
+			linkMeshes.push(mesh);
+		}
 	}
 
 	// Selection indicator: the selected ball gets a strong emissive boost
