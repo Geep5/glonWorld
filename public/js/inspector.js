@@ -26,11 +26,6 @@ import { colorForType } from "./colors.js";
 		coinSection: document.getElementById("insp-coin-section"),
 		coinHeader: document.getElementById("insp-coin-header"),
 		coinList: document.getElementById("insp-coin-list"),
-		chatSection: document.getElementById("insp-chat-section"),
-		chatHistory: document.getElementById("insp-chat-history"),
-		chatInput: document.getElementById("insp-chat-input"),
-		chatSend: document.getElementById("insp-chat-send"),
-		chatStatus: document.getElementById("insp-chat-status"),
 		// Landing placeholder stats
 		stats: document.getElementById("stats"),
 	};
@@ -169,10 +164,8 @@ function render(detail, changesResponse) {
 			append(els.agentStats, r);
 		}
 		// Chat section
-		renderChatSection(obj.id, obj.name);
 	} else {
 		els.agentSection.hidden = true;
-		els.chatSection.hidden = true;
 	}
 
 
@@ -276,159 +269,6 @@ function render(detail, changesResponse) {
 	}
 
 
-	// ── Chat section ──────────────────────────────────────────────
-
-	let chatAgentId = null;
-	let chatAgentName = "Agent";
-	let chatPolling = 0;
-
-	function renderChatSection(agentId, agentName) {
-		chatAgentId = agentId;
-		chatAgentName = agentName || "Agent";
-		els.chatSection.hidden = false;
-		els.chatHistory.innerHTML = "";
-		els.chatStatus.textContent = "";
-		els.chatStatus.className = "chat-status";
-		els.chatInput.value = "";
-		els.chatInput.disabled = false;
-		els.chatSend.disabled = false;
-
-		// Wire send handlers once
-		if (!els.chatSend._wired) {
-			els.chatSend._wired = true;
-			els.chatSend.addEventListener("click", sendChatMessage);
-			els.chatInput.addEventListener("keydown", (e) => {
-				if (e.key === "Enter" && !e.shiftKey) {
-					e.preventDefault();
-					sendChatMessage();
-				}
-			});
-		}
-
-		loadChatHistory(agentId);
-	}
-
-	async function loadChatHistory(agentId) {
-		try {
-			const r = await fetch(`/api/agents/${encodeURIComponent(agentId)}/conversation`);
-			if (!r.ok) return;
-			const data = await r.json();
-			renderChatMessages(data.blocks ?? []);
-		} catch (err) {
-			console.warn("chat history load failed", err);
-		}
-	}
-
-	function renderChatMessages(blocks) {
-		// Only show user_text and assistant_text blocks (skip tool_use / tool_result / compaction)
-		const chatBlocks = blocks.filter((b) => b.kind === "user_text" || b.kind === "assistant_text");
-		// Show last 50 to keep it fast
-		const visible = chatBlocks.slice(-50);
-
-		els.chatHistory.innerHTML = "";
-		for (const b of visible) {
-			const msg = document.createElement("div");
-			msg.className = `chat-msg ${b.kind === "user_text" ? "user" : "assistant"}`;
-
-			const label = document.createElement("div");
-			label.className = "chat-label";
-			label.textContent = b.kind === "user_text" ? "You" : chatAgentName;
-
-			const text = document.createElement("div");
-			// Strip the [from ...] prefix from user messages for cleaner display
-			let displayText = b.text ?? "";
-			if (b.kind === "user_text") {
-				const m = displayText.match(/^\[from .+? on .+?\]\s*/);
-				if (m) displayText = displayText.slice(m[0].length);
-			}
-			text.textContent = displayText;
-
-			msg.appendChild(label);
-			msg.appendChild(text);
-			els.chatHistory.appendChild(msg);
-		}
-
-		// Auto-scroll to bottom
-		els.chatHistory.scrollTop = els.chatHistory.scrollHeight;
-	}
-
-	async function sendChatMessage() {
-		const text = els.chatInput.value.trim();
-		if (!text || !chatAgentId) return;
-
-		els.chatInput.value = "";
-		els.chatInput.disabled = true;
-		els.chatSend.disabled = true;
-		els.chatStatus.textContent = "Sending…";
-		els.chatStatus.className = "chat-status sending";
-
-		// Optimistically add user message
-		const msg = document.createElement("div");
-		msg.className = "chat-msg user";
-		msg.innerHTML = `<div class="chat-label">You</div><div>${escapeHtml(text)}</div>`;
-		els.chatHistory.appendChild(msg);
-		els.chatHistory.scrollTop = els.chatHistory.scrollHeight;
-
-		try {
-			const r = await fetch(`/api/agents/${encodeURIComponent(chatAgentId)}/chat`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ message: text }),
-			});
-			const data = await r.json();
-			if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-
-			els.chatStatus.textContent = `${chatAgentName} is thinking…`;
-			els.chatStatus.className = "chat-status ok";
-
-			// Poll for assistant response
-			startChatPolling();
-		} catch (err) {
-			els.chatStatus.textContent = `Send failed: ${err?.message ?? err}`;
-			els.chatStatus.className = "chat-status err";
-			els.chatInput.disabled = false;
-			els.chatSend.disabled = false;
-		}
-	}
-
-	function startChatPolling() {
-		clearInterval(chatPolling);
-		let attempts = 0;
-		const maxAttempts = 60; // ~60 seconds
-		const prevCount = els.chatHistory.children.length;
-
-		chatPolling = setInterval(async () => {
-			attempts++;
-			if (attempts > maxAttempts) {
-				clearInterval(chatPolling);
-				els.chatStatus.textContent = "No response yet — agent may still be processing.";
-				els.chatInput.disabled = false;
-				els.chatSend.disabled = false;
-				return;
-			}
-
-			try {
-				const r = await fetch(`/api/agents/${encodeURIComponent(chatAgentId)}/conversation`);
-				if (!r.ok) return;
-				const data = await r.json();
-				const blocks = data.blocks ?? [];
-				const chatBlocks = blocks.filter((b) => b.kind === "user_text" || b.kind === "assistant_text");
-				const visible = chatBlocks.slice(-50);
-
-				// Check if there's a new assistant message
-				const lastBlock = visible[visible.length - 1];
-				if (lastBlock?.kind === "assistant_text" && visible.length > prevCount) {
-					renderChatMessages(blocks);
-					clearInterval(chatPolling);
-					els.chatStatus.textContent = "";
-					els.chatInput.disabled = false;
-					els.chatSend.disabled = false;
-				}
-			} catch (err) {
-				// ignore polling errors
-			}
-		}, 1000);
-	}
 
 
 	// ── DOM helpers ────────────────────────────────────────────────
