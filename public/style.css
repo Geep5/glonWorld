@@ -38,15 +38,15 @@ html, body {
 	z-index: 0;
 }
 
-/* HUD reference grid \u2014 fixed screen-space cells the user can name
-   while orbiting ("the ball in C2"). Sits above the WebGL canvas and
-   below every interactive element via `pointer-events: none`. */
-#grid-overlay {
-	position: fixed;
-	inset: 0;
-	display: grid;
-	pointer-events: none;
-	z-index: 1;
+	/* HUD reference grid — fixed screen-space cells the user can name
+	   while orbiting ("the ball in C2"). Sits behind the WebGL canvas so
+	   planets render on top; still visible because canvas is transparent. */
+	#grid-overlay {
+		position: fixed;
+		inset: 0;
+		display: grid;
+		pointer-events: none;
+		z-index: -1;
 	/* Cell count comes from main.js via custom properties so the labels
 	   and CSS layout stay in sync from a single source of truth. */
 	grid-template-columns: repeat(var(--grid-cols, 8), 1fr);

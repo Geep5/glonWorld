@@ -122,10 +122,10 @@ let contextActiveIds = new Set();
 
 function setupThree() {
 	const canvas = document.getElementById("scene");
-	renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+	renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance", alpha: true });
 	renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 	renderer.setSize(window.innerWidth, window.innerHeight);
-	renderer.setClearColor(0x000000, 1);
+	renderer.setClearColor(0x000000, 0);
 	// Cinematic tone curve + sRGB output give the textured planets the same
 	// rich falloff a real solar-system viewer has.
 	renderer.toneMapping = THREE.ACESFilmicToneMapping;
