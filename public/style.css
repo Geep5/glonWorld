@@ -1013,9 +1013,9 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 		padding: 6px 8px;
 		display: flex;
 		flex-direction: column;
+		justify-content: flex-end;
 		gap: 6px;
 	}
-}
 .chat-window .chat-msg {
 	padding: 6px 10px;
 	border-radius: 8px;
