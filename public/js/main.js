@@ -21,8 +21,7 @@ import { colorForType } from "./colors.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
 	import { getRender, applyToMesh, updateOverlays } from "./planet-styles.js";
-	import * as planetForge from "./planet-forge.js";
-// ── State ──────────────────────────────────────────────────────────
+	// ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
 
@@ -518,12 +517,6 @@ function bindUI() {
 			selectedId = null;
 			clearInspector();
 			highlightSelected();
-			planetForge.setTarget(null, "none");
-			return;
-		}
-		// F toggles Planet Forge
-		if (e.key === "f" || e.key === "F") {
-			planetForge.toggle();
 			return;
 		}
 		// WASD / Space pan — ignore when typing in inputs.
@@ -726,9 +719,6 @@ function onDoubleClick(e) {
 		showObject(id);
 		highlightSelected();
 		if (focus) focusOnId(id);
-		// Update planet forge target
-		const node = cosmosCtx?.nodes?.get(id);
-		planetForge.setTarget(id, node?.obj?.name || id?.slice(0, 8));
 	}
 
 function focusOnId(id) {

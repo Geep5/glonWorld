@@ -109,12 +109,17 @@
 			</div>
 
 			<div class="insp-section" id="insp-style-section" hidden>
-				<h3 class="collapsible" data-target="insp-style-body">Custom Planet</h3>
-				<div id="insp-style-body" style="display:none">
-					<div class="style-note">
-						Press <kbd>F</kbd> to open <b>Planet Forge</b> and chat with the AI to design this planet.
-					</div>
-					<div id="insp-style-status" class="chat-status"></div>
+				<h3>Custom Planet</h3>
+				<div class="forge-keyrow">
+					<input type="password" id="insp-forge-key" placeholder="OpenAI API key" />
+					<button id="insp-forge-key-save">Save</button>
+				</div>
+				<div class="forge-history" id="insp-forge-history"></div>
+				<div class="forge-status" id="insp-forge-status"></div>
+				<div class="forge-inputrow">
+					<input type="text" id="insp-forge-input" placeholder="Describe your planet..." />
+					<button id="insp-forge-send">Send</button>
+					<button id="insp-forge-apply" disabled>Apply</button>
 				</div>
 			</div>
 			<div id="insp-recall" class="insp-recall"></div>

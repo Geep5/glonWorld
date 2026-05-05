@@ -6,6 +6,7 @@
 
 	import { colorForType } from "./colors.js";
 	import { getRender } from "./planet-styles.js";
+	import * as planetForge from "./planet-forge.js";
 
 	const els = {
 		empty: document.getElementById("inspector-empty"),
@@ -28,12 +29,29 @@
 		coinHeader: document.getElementById("insp-coin-header"),
 		coinList: document.getElementById("insp-coin-list"),
 		styleSection: document.getElementById("insp-style-section"),
-		styleStatus: document.getElementById("insp-style-status"),
+		forgeHistory: document.getElementById("insp-forge-history"),
+		forgeStatus: document.getElementById("insp-forge-status"),
+		forgeInput: document.getElementById("insp-forge-input"),
+		forgeSend: document.getElementById("insp-forge-send"),
+		forgeApply: document.getElementById("insp-forge-apply"),
+		forgeKey: document.getElementById("insp-forge-key"),
+		forgeKeySave: document.getElementById("insp-forge-key-save"),
 		// Landing placeholder stats
 		stats: document.getElementById("stats"),
 	};
 
-let handlers = {};
+	// Wire up Planet Forge once
+	planetForge.init({
+		historyEl: els.forgeHistory,
+		statusEl: els.forgeStatus,
+		inputEl: els.forgeInput,
+		sendBtn: els.forgeSend,
+		applyBtn: els.forgeApply,
+		keyInput: els.forgeKey,
+		keySaveBtn: els.forgeKeySave,
+	});
+
+	let handlers = {};
 
 export function bindInspector({ onNavigate, onInject }) {
 	handlers = { onNavigate, onInject };
@@ -281,22 +299,7 @@ function render(detail, changesResponse) {
 
 	function renderStyleSection(objectId) {
 		els.styleSection.hidden = false;
-		const render = getRender(objectId);
-		els.styleStatus.textContent = render ? "Custom render active" : "Using defaults";
-		els.styleStatus.className = render ? "chat-status ok" : "chat-status";
-
-		// Wire collapsible toggle once
-		if (!els.styleSection._wired) {
-			els.styleSection._wired = true;
-			const header = els.styleSection.querySelector(".collapsible");
-			const body = document.getElementById("insp-style-body");
-			if (header && body) {
-				header.style.cursor = "pointer";
-				header.addEventListener("click", () => {
-					body.style.display = body.style.display === "none" ? "block" : "none";
-				});
-			}
-		}
+		planetForge.setTarget(objectId);
 	}
 
 	// ── DOM helpers ────────────────────────────────────────────────
