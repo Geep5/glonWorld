@@ -36,11 +36,16 @@ let timeFilter = null;      // ms upper bound, or null for live
 let contextAgentId = null;
 
 
-// WASD / Space pan state
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
-const PAN_SPEED = 25; // world units per second
+	// WASD / Space pan state
+	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+	const PAN_SPEED = 25; // world units per second
 
-// Shared reusable geometries + materials.
+	// HUD grid config (must match setupHudGrid)
+	const GRID_COLS = 8;
+	const GRID_ROWS = 4;
+	let mouseGridCell = null; // { col, row } or null
+
+	// Shared reusable geometries + materials.
 const materials = {
 	// Higher-poly spheres so the procedural surface texture and directional
 	// sun lighting render smoothly without faceting on close-up balls.
@@ -702,28 +707,38 @@ let pointer = { x: 0, y: 0 };
 // balls relax back to their float position when the pointer isn't on the canvas.
 let cursorActive = false;
 
-function onPointerMove(e) {
-	pointer.x = e.clientX;
-	pointer.y = e.clientY;
-	mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-	mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-	cursorActive = e.target === renderer.domElement;
-	raycaster.setFromCamera(mouse, camera);
-	const hits = raycaster.intersectObjects(visiblePickables(), false);
-	const first = hits[0]?.object;
-	if (!first) {
-		hoverId = null;
-		document.getElementById("hover").textContent = "";
-		hideTooltip();
-		return;
+	function onPointerMove(e) {
+		pointer.x = e.clientX;
+		pointer.y = e.clientY;
+		mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+		mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+		cursorActive = e.target === renderer.domElement;
+
+		// Track which HUD grid cell the mouse is in
+		if (cursorActive) {
+			const col = Math.min(GRID_COLS - 1, Math.max(0, Math.floor(e.clientX / (window.innerWidth / GRID_COLS))));
+			const row = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(e.clientY / (window.innerHeight / GRID_ROWS))));
+			mouseGridCell = { col, row };
+		} else {
+			mouseGridCell = null;
+		}
+
+		raycaster.setFromCamera(mouse, camera);
+		const hits = raycaster.intersectObjects(visiblePickables(), false);
+		const first = hits[0]?.object;
+		if (!first) {
+			hoverId = null;
+			document.getElementById("hover").textContent = "";
+			hideTooltip();
+			return;
+		}
+		const ud = first.userData;
+		if (ud.kind === "object") {
+			hoverId = ud.id;
+			document.getElementById("hover").textContent = `${ud.typeKey} · ${shortId(ud.id)}`;
+			showObjectTooltip(ud.obj);
+		}
 	}
-	const ud = first.userData;
-	if (ud.kind === "object") {
-		hoverId = ud.id;
-		document.getElementById("hover").textContent = `${ud.typeKey} \u00b7 ${shortId(ud.id)}`;
-		showObjectTooltip(ud.obj);
-	}
-}
 
 function visiblePickables() {
 	return pickables.filter((m) => {
@@ -1102,36 +1117,50 @@ function animate() {
 
 // ── Labels (2D canvas overlay) ────────────────────────────────────
 
-function drawLabels() {
-	labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
-	labelCtx.font = "12px ui-monospace, 'SF Mono', Menlo, monospace";
-	labelCtx.textBaseline = "top";
+	function drawLabels() {
+		labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+		labelCtx.font = "12px ui-monospace, 'SF Mono', Menlo, monospace";
+		labelCtx.textBaseline = "top";
 
-	const screen = new THREE.Vector3();
+		const screen = new THREE.Vector3();
+		const dpr = window.devicePixelRatio || 1;
+		const cellW = window.innerWidth / GRID_COLS;
+		const cellH = window.innerHeight / GRID_ROWS;
 
-	// Label featured types (agents, peers) plus the selection/hover, so the
-	// scene stays readable without burying every dot in text.
-	for (const [id, node] of cosmosCtx.nodes) {
-		const obj = node.mesh.userData.obj;
-		const isFeatured = obj.typeKey === "agent" || obj.typeKey === "trading_agent" || obj.typeKey === "peer" || id === selectedId || id === hoverId;
-		if (!isFeatured) continue;
-		if (!node.mesh.visible) continue;
-		screen.copy(node.mesh.position);
-		screen.project(camera);
-		if (screen.z > 1) continue;
-		const x = (screen.x * 0.5 + 0.5) * labelCanvas.width / (window.devicePixelRatio || 1);
-		const y = (-screen.y * 0.5 + 0.5) * labelCanvas.height / (window.devicePixelRatio || 1);
+		// Show labels for nodes in the same HUD grid cell as the mouse,
+		// plus the selected/hovered node. Hold Shift to show all labels.
+		for (const [id, node] of cosmosCtx.nodes) {
+			const obj = node.mesh.userData.obj;
+			const isPinned = id === selectedId || id === hoverId;
+			if (!node.mesh.visible) continue;
+			screen.copy(node.mesh.position);
+			screen.project(camera);
+			if (screen.z > 1) continue;
 
-		const { hex } = colorForType(obj.typeKey);
-		const label = obj.name ?? shortId(obj.id);
-		labelCtx.fillStyle = "rgba(5,6,10,.75)";
-		const metrics = labelCtx.measureText(label);
-		const padX = 6, padY = 3;
-		labelCtx.fillRect(x + 12, y - 8, metrics.width + padX * 2, 18);
-		labelCtx.fillStyle = hex;
-		labelCtx.fillText(label, x + 12 + padX, y - 8 + padY);
+			// CSS pixel coordinates
+			const px = (screen.x * 0.5 + 0.5) * window.innerWidth;
+			const py = (-screen.y * 0.5 + 0.5) * window.innerHeight;
+
+			if (!isPinned && !keys.shift) {
+				if (!mouseGridCell) continue;
+				const nodeCol = Math.min(GRID_COLS - 1, Math.max(0, Math.floor(px / cellW)));
+				const nodeRow = Math.min(GRID_ROWS - 1, Math.max(0, Math.floor(py / cellH)));
+				if (nodeCol !== mouseGridCell.col || nodeRow !== mouseGridCell.row) continue;
+			}
+
+			// Canvas pixel coordinates for drawing
+			const x = px * dpr;
+			const y = py * dpr;
+			const { hex } = colorForType(obj.typeKey);
+			const label = obj.name ?? shortId(obj.id);
+			labelCtx.fillStyle = "rgba(5,6,10,.75)";
+			const metrics = labelCtx.measureText(label);
+			const padX = 6, padY = 3;
+			labelCtx.fillRect(x + 12, y - 8, metrics.width + padX * 2, 18);
+			labelCtx.fillStyle = hex;
+			labelCtx.fillText(label, x + 12 + padX, y - 8 + padY);
+		}
 	}
-}
 
 // \u2500\u2500 HUD reference grid \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
