@@ -211,7 +211,7 @@ function setupThree() {
 					node.mesh.material.map = null;
 				}
 				// Restore default emissive intensity based on type
-				const isFeatured = typeKey === "agent";
+				const isFeatured = typeKey === "agent" || typeKey === "trading_agent";
 				node.mesh.material.emissiveIntensity = isFeatured ? 1.4 : 0.05;
 				node.mesh.material.needsUpdate = true;
 			}
@@ -1113,7 +1113,7 @@ function drawLabels() {
 	// scene stays readable without burying every dot in text.
 	for (const [id, node] of cosmosCtx.nodes) {
 		const obj = node.mesh.userData.obj;
-		const isFeatured = obj.typeKey === "agent" || obj.typeKey === "peer" || id === selectedId || id === hoverId;
+		const isFeatured = obj.typeKey === "agent" || obj.typeKey === "trading_agent" || obj.typeKey === "peer" || id === selectedId || id === hoverId;
 		if (!isFeatured) continue;
 		if (!node.mesh.visible) continue;
 		screen.copy(node.mesh.position);

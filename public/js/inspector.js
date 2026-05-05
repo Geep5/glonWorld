@@ -108,16 +108,17 @@ function renderInjectSection() {
 
 let currentId = null;
 
-export function setLanding(state) {
-	const agent = state.objects.find((o) => o.typeKey === "agent");
-	els.stats.innerHTML = "";
-	const rows = [
-		["objects", state.objects.length],
-		["links", state.links.length],
-		["types", Object.keys(state.byType).length],
-		["agents", state.objects.filter((o) => o.typeKey === "agent").length],
-		["programs", state.objects.filter((o) => o.typeKey === "program").length],
-	];
+	export function setLanding(state) {
+		const agent = state.objects.find((o) => o.typeKey === "agent");
+		els.stats.innerHTML = "";
+		const rows = [
+			["objects", state.objects.length],
+			["links", state.links.length],
+			["types", Object.keys(state.byType).length],
+			["agents", state.objects.filter((o) => o.typeKey === "agent").length],
+			["trading", state.objects.filter((o) => o.typeKey === "trading_agent").length],
+			["programs", state.objects.filter((o) => o.typeKey === "program").length],
+		];
 	if (agent?.agentStats) {
 		rows.push(["agent turns", `${agent.agentStats.userTurns}u / ${agent.agentStats.assistantTurns}a`]);
 		rows.push(["agent tool calls", agent.agentStats.toolUses]);

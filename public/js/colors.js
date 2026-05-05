@@ -25,9 +25,10 @@ const FIXED = {
 	unknown:    "#6b7488",
 	"chain.token": "#ffd700",
 	"chain.coin.bucket": "#c0c0c0",
-};
+	trading_agent: "#ff6b6b",
+	};
 
-function hashHue(s) {
+	function hashHue(s) {
 	let h = 2166136261;
 	for (let i = 0; i < s.length; i++) {
 		h ^= s.charCodeAt(i);

@@ -301,6 +301,7 @@ export function buildCosmos(state, materials) {
 
 	// Nodes --------------------------------------------------------
 	for (const [typeKey, list] of byType) {
+		const isAgentType = typeKey === "agent" || typeKey === "trading_agent";
 		const { radius, y, scale, featured } = layoutForType(typeKey);
 		const { color, hex } = colorForType(typeKey);
 		const surface = planetTextureFor(typeKey, hex);
@@ -308,14 +309,14 @@ export function buildCosmos(state, materials) {
 		// Deterministic ordering. Agents are sorted by spawn_depth first so
 		// every primary lands before its subagents \u2014 the subagent placement
 		// reads positions.get(parent) and would otherwise miss the parent.
-		const sorted = typeKey === "agent"
+		const sorted = isAgentType
 			? [...list].sort((a, b) => spawnDepthOf(a) - spawnDepthOf(b) || a.id.localeCompare(b.id))
 			: [...list].sort((a, b) => a.id.localeCompare(b.id));
 		const floatScale = radius < 1 ? 0.4 : 1.0; // central anchor drifts less
 
 		// Pre-compute primary-agent count + index for ring-distribution when
 		// the user has more than one top-level agent in their store.
-		const primaryCount = typeKey === "agent"
+		const primaryCount = isAgentType
 			? sorted.filter((o) => !orbitParentOf.has(o.id)).length
 			: 0;
 
@@ -333,7 +334,7 @@ export function buildCosmos(state, materials) {
 				const siblings = orbitChildren.get(parentId) ?? [];
 				const sIdx = siblings.indexOf(obj.id);
 				const sCount = siblings.length;
-				const depth = (typeKey === "agent" ? Math.max(1, spawnDepthOf(obj)) : 1);
+				const depth = (isAgentType ? Math.max(1, spawnDepthOf(obj)) : 1);
 				const parentOrbit = orbits.get(parentId);
 				const parentHaloR = parentOrbit?.haloScale ?? 4;
 				const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
@@ -349,11 +350,11 @@ export function buildCosmos(state, materials) {
 				// Primary placement on the type's ring. For 'agent' this is r=0
 				// unless multiple primaries exist, in which case spread them on a
 				// tiny inner ring so they don't stack.
-				const primaryIdx = typeKey === "agent"
+				const primaryIdx = isAgentType
 					? sorted.filter((o) => !orbitParentOf.has(o.id)).findIndex((o) => o.id === obj.id)
 					: i;
-				const ringCount = typeKey === "agent" ? primaryCount : sorted.length;
-				const ringRadius = typeKey === "agent" && primaryCount > 1 ? 2 : radius;
+				const ringCount = isAgentType ? primaryCount : sorted.length;
+				const ringRadius = isAgentType && primaryCount > 1 ? 2 : radius;
 				const theta0 = angleFor(primaryIdx, ringCount, typeKey);
 				const yJitter = jitterY(obj.id);
 				const baseY = y + yJitter;
