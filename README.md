@@ -4,18 +4,13 @@ Live 3D dashboard for a **[glon](https://github.com/Geep5/glon)** environment. E
 
 ![Cosmos with live log, AI jobs panel, and inject button](./snapshots/hero.png)
 
-<details>
-<summary>more screenshots</summary>
-
-![idle cosmos with the AI Jobs panel and the activity heat strip](./snapshots/cosmos.png)
-
-![SSE event log open, streaming tool calls](./snapshots/livelog.png)
-
-</details>
+Objects orbit their parent by link relation (`spawn_parent`, `owner`, `token`).
+Shared nodes (programs, peers, source files) stay on the outer type rings.
+Link tubes are color-coded by relation key.
 
 ## What you see
 
-**The cosmos.** Every glon object is a node on a per-type ring, colored by type (agent, peer, program, `chain.token`, `chain.coin.bucket`, pinned_fact, milestone, …). Links render as quadratic-Bezier arcs. Nodes drift on sin-waves so the scene feels alive.
+**The cosmos.** Objects orbit their parent by link relation: agents at the center, subagents and owned objects (memory, todos, tokens) as satellites, shared programs/peers/files on outer type rings. Links render as color-coded quadratic-Bezier arcs. Nodes drift on sin-waves so the scene feels alive.
 
 **Activity heat.** Every object decays heat as `exp(-Δt / 30s)` from `lastSeen`. Heat drives emissive intensity, halo opacity, and scale pulse.
 
