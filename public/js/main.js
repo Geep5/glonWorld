@@ -19,7 +19,7 @@ import { buildCosmos } from "./cosmos.js";
 import { colorForType } from "./colors.js";
 	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
-	import { openAgentChat } from "./chat.js";
+	import { openAgentChat, initAgentChats } from "./chat.js";
 // ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -61,6 +61,7 @@ async function init() {
 	const agents = snapshot.objects.filter((o) => o.typeKey === "agent");
 	agents.sort((a, b) => (b.agentStats?.lastActivity ?? 0) - (a.agentStats?.lastActivity ?? 0));
 	contextAgentId = agents[0]?.id ?? null;
+	initAgentChats(agents);
 	setupThree();
 	setupHudGrid(8, 4);
 	buildScenes();
@@ -684,10 +685,6 @@ function onClick(e) {
 	const ud = first.userData;
 		if (ud.kind === "object") {
 			select(ud.id);
-			// Open floating chat window for agents
-			if (ud.typeKey === "agent") {
-				openAgentChat(ud.id, ud.obj?.name);
-			}
 		}
 }
 

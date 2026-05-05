@@ -274,24 +274,45 @@ class ChatWindow {
 			} catch { /* ignore */ }
 		}, 1000);
 	}
-}
-
-export function openAgentChat(agentId, agentName) {
-	if (openChats.has(agentId)) {
-		const chat = openChats.get(agentId);
-		chat.panel.classList.remove("minimized");
-		chat.panel.style.zIndex = ++zCounter;
-		return;
 	}
-	const chat = new ChatWindow(agentId, agentName);
-	openChats.set(agentId, chat);
-}
 
-export function closeAgentChat(agentId) {
-	openChats.get(agentId)?.close();
-}
+	export function initAgentChats(agents) {
+		for (const agent of agents) {
+			openAgentChat(agent.id, agent.name);
+		}
+	}
 
-function escapeHtml(s) {
-	if (!s) return "";
-	return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
-}
+	// Periodically check for new agents (e.g. spawned subagents)
+	setInterval(async () => {
+		try {
+			const r = await fetch("/api/state");
+			if (!r.ok) return;
+			const data = await r.json();
+			const agents = (data.objects ?? []).filter((o) => o.typeKey === "agent");
+			for (const agent of agents) {
+				if (!openChats.has(agent.id)) {
+					openAgentChat(agent.id, agent.name);
+				}
+			}
+		} catch { /* ignore */ }
+	}, 10000);
+
+	export function openAgentChat(agentId, agentName) {
+		if (openChats.has(agentId)) {
+			const chat = openChats.get(agentId);
+			chat.panel.classList.remove("minimized");
+			chat.panel.style.zIndex = ++zCounter;
+			return;
+		}
+		const chat = new ChatWindow(agentId, agentName);
+		openChats.set(agentId, chat);
+	}
+
+	export function closeAgentChat(agentId) {
+		openChats.get(agentId)?.close();
+	}
+
+	function escapeHtml(s) {
+		if (!s) return "";
+		return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+	}
