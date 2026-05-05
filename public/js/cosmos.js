@@ -400,7 +400,7 @@ export function buildCosmos(state, materials) {
 					roughness: 0.72,
 				});
 			}
-			const mesh = new THREE.Mesh(materials.sphere, mat);
+			const mesh = new THREE.Mesh(typeKey === "chain.anchor" ? materials.sphereSmall : materials.sphere, mat);
 			mesh.position.copy(pos);
 			mesh.scale.setScalar(r);
 			mesh.userData = { kind: "object", id: obj.id, typeKey, obj };
@@ -599,33 +599,41 @@ export function buildCosmos(state, materials) {
 		linkMeshes.push(mesh);
 	}
 
-	// Anchor chain tubes (after linkMeshes exists)
+	// Anchor chain: single cheap line instead of 1,700 TubeGeometry meshes.
 	if (anchorChain.length > 1) {
-		const CHAIN_STYLE = { color: "#fbbf24", opacity: 0.55, width: 0.04 };
-		for (let i = 1; i < anchorChain.length; i++) {
-			const a = positions.get(anchorChain[i - 1].id);
-			const b = positions.get(anchorChain[i].id);
-			if (!a || !b) continue;
-			const mid = a.clone().add(b).multiplyScalar(0.5);
-			const lift = Math.max(0.5, a.distanceTo(b) * 0.15);
-			mid.add(new THREE.Vector3(0, lift, 0));
-			const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
-			const geom = new THREE.TubeGeometry(curve, 32, CHAIN_STYLE.width, 6, false);
-			const mat = new THREE.MeshBasicMaterial({
-				color: new THREE.Color(CHAIN_STYLE.color),
-				transparent: true,
-				opacity: CHAIN_STYLE.opacity,
-			});
-			const mesh = new THREE.Mesh(geom, mat);
-			mesh.userData = {
-				kind: "link",
-				link: { sourceId: anchorChain[i - 1].id, targetId: anchorChain[i].id },
-				isLineage: false,
-				linkWidth: CHAIN_STYLE.width,
-			};
-			group.add(mesh);
-			linkMeshes.push(mesh);
+		const chainPositions = new Float32Array(anchorChain.length * 3);
+		for (let i = 0; i < anchorChain.length; i++) {
+			const p = positions.get(anchorChain[i].id);
+			chainPositions[i * 3] = p.x;
+			chainPositions[i * 3 + 1] = p.y;
+			chainPositions[i * 3 + 2] = p.z;
 		}
+		const chainGeom = new THREE.BufferGeometry();
+		chainGeom.setAttribute("position", new THREE.BufferAttribute(chainPositions, 3));
+		const chainMat = new THREE.LineBasicMaterial({
+			color: 0xfbbf24,
+			transparent: true,
+			opacity: 0.45,
+			depthWrite: false,
+		});
+		const chainLine = new THREE.Line(chainGeom, chainMat);
+		chainLine.userData = { kind: "anchor-chain-line" };
+		group.add(chainLine);
+
+		// Update the line positions each frame by hooking into the existing tick.
+		// We stash a reference so tick() can update it without regenerating geometry.
+		chainLine.userData.update = () => {
+			const posAttr = chainLine.geometry.attributes.position;
+			const arr = posAttr.array;
+			for (let i = 0; i < anchorChain.length; i++) {
+				const p = positions.get(anchorChain[i].id);
+				arr[i * 3] = p.x;
+				arr[i * 3 + 1] = p.y;
+				arr[i * 3 + 2] = p.z;
+			}
+			posAttr.needsUpdate = true;
+		};
+		linkMeshes.push(chainLine); // push so tick() visits it
 	}
 
 	// Selection indicator: the selected ball gets a strong emissive boost
@@ -930,6 +938,11 @@ export function buildCosmos(state, materials) {
 			}
 		}
 		for (const m of linkMeshes) {
+			// Anchor chain line: cheap BufferGeometry update, skip TubeGeometry rebuild.
+			if (m.userData.update) {
+				m.userData.update();
+				continue;
+			}
 			const link = m.userData.link;
 			const a = positions.get(link.sourceId);
 			const b = positions.get(link.targetId);
@@ -945,7 +958,6 @@ export function buildCosmos(state, materials) {
 			const curve = new THREE.QuadraticBezierCurve3(tmpA.clone(), tmpMid.clone(), tmpB.clone());
 			const newGeom = new THREE.TubeGeometry(curve, 48, m.userData.linkWidth, 6, false);
 			m.geometry.dispose();
-
 			m.geometry = newGeom;
 		}
 	}
