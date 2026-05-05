@@ -38,6 +38,7 @@ let contextAgentId = null;
 
 	// WASD / Space pan state
 	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
+	const PAN_SPEED = 25; // world units per second
 
 
 	// HUD grid dimensions (must match setupHudGrid call)
