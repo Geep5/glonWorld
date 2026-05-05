@@ -169,7 +169,7 @@ function render(detail, changesResponse) {
 			append(els.agentStats, r);
 		}
 		// Chat section
-		renderChatSection(obj.id);
+		renderChatSection(obj.id, obj.name);
 	} else {
 		els.agentSection.hidden = true;
 		els.chatSection.hidden = true;
@@ -279,10 +279,12 @@ function render(detail, changesResponse) {
 	// ── Chat section ──────────────────────────────────────────────
 
 	let chatAgentId = null;
+	let chatAgentName = "Agent";
 	let chatPolling = 0;
 
-	function renderChatSection(agentId) {
+	function renderChatSection(agentId, agentName) {
 		chatAgentId = agentId;
+		chatAgentName = agentName || "Agent";
 		els.chatSection.hidden = false;
 		els.chatHistory.innerHTML = "";
 		els.chatStatus.textContent = "";
@@ -330,7 +332,7 @@ function render(detail, changesResponse) {
 
 			const label = document.createElement("div");
 			label.className = "chat-label";
-			label.textContent = b.kind === "user_text" ? "You" : "Agent";
+			label.textContent = b.kind === "user_text" ? "You" : chatAgentName;
 
 			const text = document.createElement("div");
 			// Strip the [from ...] prefix from user messages for cleaner display
@@ -376,7 +378,7 @@ function render(detail, changesResponse) {
 			const data = await r.json();
 			if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
 
-			els.chatStatus.textContent = "Agent is thinking…";
+			els.chatStatus.textContent = `${chatAgentName} is thinking…`;
 			els.chatStatus.className = "chat-status ok";
 
 			// Poll for assistant response
