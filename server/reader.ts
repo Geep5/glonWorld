@@ -697,15 +697,28 @@ export function getObjectDetail(id: string): {
 		}
 	}
 
-	return {
-		object: po.object,
-		outLinks,
-		inLinks,
-		rawFields,
-		contentPreview,
-		...(po.coinState ? { coinState: po.coinState } : {}),
-		walletPubkeys: [...getWalletPubkeys()],
-	};
+		let enrichedCoinState: CoinState | undefined;
+		if (po.coinState) {
+			enrichedCoinState = { ...po.coinState };
+			if (enrichedCoinState.tokenId) {
+				const tokenPo = c.perObject.get(enrichedCoinState.tokenId);
+				if (tokenPo) {
+					enrichedCoinState.tokenName = tokenPo.object.name;
+					const sym = extractString(tokenPo.state.fields.get("symbol"));
+					if (sym) enrichedCoinState.tokenSymbol = sym;
+				}
+			}
+		}
+
+		return {
+			object: po.object,
+			outLinks,
+			inLinks,
+			rawFields,
+			contentPreview,
+			...(enrichedCoinState ? { coinState: enrichedCoinState } : {}),
+			walletPubkeys: [...getWalletPubkeys()],
+		};
 }
 
 function normalizeValue(v: Value): unknown {
@@ -964,13 +977,22 @@ export function search(query: string, limit: number = 20): SearchResults {
 }
 
 
-export function getCoinOverview(): { buckets: (VizObject & { coinState: CoinState })[] } {
-	const c = getCache();
-	const buckets: (VizObject & { coinState: CoinState })[] = [];
-	for (const po of c.perObject.values()) {
-		if (po.object.typeKey !== BUCKET_TYPE_KEY) continue;
-		if (!po.coinState) continue;
-		buckets.push({ ...po.object, coinState: po.coinState });
+	export function getCoinOverview(): { buckets: (VizObject & { coinState: CoinState })[] } {
+		const c = getCache();
+		const buckets: (VizObject & { coinState: CoinState })[] = [];
+		for (const po of c.perObject.values()) {
+			if (po.object.typeKey !== BUCKET_TYPE_KEY) continue;
+			if (!po.coinState) continue;
+			const enriched: CoinState = { ...po.coinState };
+			if (enriched.tokenId) {
+				const tokenPo = c.perObject.get(enriched.tokenId);
+				if (tokenPo) {
+					enriched.tokenName = tokenPo.object.name;
+					const sym = extractString(tokenPo.state.fields.get("symbol"));
+					if (sym) enriched.tokenSymbol = sym;
+				}
+			}
+			buckets.push({ ...po.object, coinState: enriched });
+		}
+		return { buckets };
 	}
-	return { buckets };
-}

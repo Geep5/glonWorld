@@ -22,14 +22,16 @@ export interface CoinRecord {
 	spent: boolean;
 }
 
-export interface CoinState {
-	tokenId: string;
-	coinCount: number;
-	unspentCount: number;
-	spentCount: number;
-	totalAmount: string;
-	coins: Record<string, CoinRecord>;
-}
+	export interface CoinState {
+		tokenId: string;
+		tokenName?: string;
+		tokenSymbol?: string;
+		coinCount: number;
+		unspentCount: number;
+		spentCount: number;
+		totalAmount: string;
+		coins: Record<string, CoinRecord>;
+	}
 
 export function decodeCoinOp(block: Block): CoinOp | null {
 	const custom = (block.content as any)?.custom;

@@ -34,6 +34,11 @@ let timeFilter = null;      // ms upper bound, or null for live
 // Watched agent for in-context highlighting; picked by activity at init.
 let contextAgentId = null;
 
+
+// WASD / Space pan state
+const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+const PAN_SPEED = 25; // world units per second
+
 // Shared reusable geometries + materials.
 const materials = {
 	// Higher-poly spheres so the procedural surface texture and directional
@@ -125,17 +130,17 @@ function setupThree() {
 	renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 	scene = new THREE.Scene();
-	scene.fog = new THREE.Fog(0x000000, 50, 160);
+	scene.fog = new THREE.Fog(0x000000, 40, 140);
 
 	camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 400);
-	camera.position.set(0, 25, 60);
+	camera.position.set(0, 20, 45);
 
 	controls = new OrbitControls(camera, canvas);
 	controls.target.set(0, 0, 0);
 	controls.enableDamping = true;
 	controls.dampingFactor = 0.08;
 	controls.minDistance = 3;
-	controls.maxDistance = 120;
+	controls.maxDistance = 100;
 
 	// (Spatial reference is provided by a screen-space HUD grid in
 	// public/index.html, not a 3D helper \u2014 the HUD stays put while the
@@ -311,17 +316,21 @@ async function renderCrypto(objects) {
     countEl.textContent = String(buckets.length);
     host.innerHTML = "";
 
-    for (const b of buckets) {
-      const li = document.createElement("li");
-      li.className = "crypto-row";
-      li.innerHTML = `
-        <span class="crypto-dot" style="background:#c0c0c0"></span>
-        <span class="crypto-name">Coin Bucket</span>
-        <span class="crypto-meta">${shortId(b.id)} · ${b.coinState.unspentCount} coins · supply ${b.coinState.totalAmount}</span>
-      `;
-      li.addEventListener("click", () => select(b.id, { focus: true }));
-      host.appendChild(li);
-    }
+	for (const b of buckets) {
+		const cs = b.coinState;
+		const tokenLabel = cs.tokenName
+			? (cs.tokenSymbol ? `${cs.tokenName} (${cs.tokenSymbol})` : cs.tokenName)
+			: (cs.tokenSymbol || "Coin Bucket");
+		const li = document.createElement("li");
+		li.className = "crypto-row";
+		li.innerHTML = `
+			<span class="crypto-dot" style="background:#c0c0c0"></span>
+			<span class="crypto-name">${tokenLabel}</span>
+			<span class="crypto-meta">${shortId(b.id)} · ${cs.unspentCount} coins · supply ${cs.totalAmount}</span>
+		`;
+		li.addEventListener("click", () => select(b.id, { focus: true }));
+		host.appendChild(li);
+	}
 
     const chainEvents = (recent.events ?? [])
       .filter((ev) => ev.typeKey === "chain.coin.bucket" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.coin.op")))
@@ -498,7 +507,21 @@ function bindUI() {
 			selectedId = null;
 			clearInspector();
 			highlightSelected();
+			return;
 		}
+		// WASD / Space pan — ignore when typing in inputs.
+		const tag = document.activeElement?.tagName;
+		if (tag === "INPUT" || tag === "TEXTAREA") return;
+		const k = e.key.toLowerCase();
+		if (k in keys) keys[k] = true;
+		if (e.code === "Space") keys.space = true;
+		if (e.key === "Shift") keys.shift = true;
+	});
+	document.addEventListener("keyup", (e) => {
+		const k = e.key.toLowerCase();
+		if (k in keys) keys[k] = false;
+		if (e.code === "Space") keys.space = false;
+		if (e.key === "Shift") keys.shift = false;
 	});
 
 	bindInspector({
@@ -560,21 +583,47 @@ function bindUI() {
 
 
 
-let activeTween = null;
-function tweenCamera(targetPos, targetLookAt) {
-	const from = camera.position.clone();
-	const toLook = controls.target.clone();
-	const t0 = performance.now();
-	const dur = 900;
-	activeTween = (now) => {
-		const t = Math.min(1, (now - t0) / dur);
-		const k = easeInOut(t);
-		camera.position.lerpVectors(from, targetPos, k);
-		controls.target.lerpVectors(toLook, targetLookAt, k);
-		controls.update();
-		if (t >= 1) activeTween = null;
-	};
-}
+	let activeTween = null;
+	function tweenCamera(targetPos, targetLookAt) {
+		// Ghost camera: placed at the actual destination, looking at the target.
+		// This produces the correct quaternion for an offset birds-eye position.
+		const ghost = new THREE.PerspectiveCamera();
+		ghost.position.copy(targetPos);
+		ghost.lookAt(targetLookAt);
+
+		const fromPos = camera.position.clone();
+		const fromQuat = camera.quaternion.clone();
+		const toPos = ghost.position.clone();
+		const toQuat = ghost.quaternion.clone();
+
+		const savedDamping = controls.enableDamping;
+		controls.enabled = false;
+		controls.enableDamping = false;
+
+		const t0 = performance.now();
+		const dur = 900;
+		activeTween = (now) => {
+			const t = Math.min(1, (now - t0) / dur);
+			const k = easeInOut(t);
+			camera.position.lerpVectors(fromPos, toPos, k);
+			camera.quaternion.slerpQuaternions(fromQuat, toQuat, k);
+			if (t >= 1) {
+				activeTween = null;
+				controls.target.copy(targetLookAt);
+				camera.position.copy(toPos);
+				camera.quaternion.copy(toQuat);
+				const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+				controls._spherical.setFromVector3(offset);
+				controls._spherical.makeSafe();
+				controls._sphericalDelta.set(0, 0, 0);
+				controls._panOffset.set(0, 0, 0);
+				controls._scale = 1;
+				controls.enabled = true;
+				controls.enableDamping = savedDamping;
+				controls.update();
+			}
+		};
+	}
 
 function easeInOut(t) {
 	return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -646,10 +695,9 @@ function onDoubleClick(e) {
 	if (!first) return;
 	const ud = first.userData;
 	if (ud.kind === "object") {
-		// Focus the camera on the object.
 		const target = first.position.clone();
-		const offset = target.clone().normalize().multiplyScalar(6);
-		tweenCamera(target.clone().add(offset).add(new THREE.Vector3(0, 3, 0)), target);
+		const birdsEyePos = new THREE.Vector3(target.x + 4, target.y + 35, target.z + 4);
+		tweenCamera(birdsEyePos, target);
 		select(ud.id);
 	}
 }
@@ -953,7 +1001,32 @@ function animate() {
 	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, ray);
 	// Agent: corona breathes, in-context blocks twinkle, blocks lean toward the cursor.
 
-	controls.update();
+	if (!activeTween) {
+		// WASD pan: move camera + target in the horizontal plane.
+		const fwd = new THREE.Vector3();
+		camera.getWorldDirection(fwd);
+		fwd.y = 0;
+		fwd.normalize();
+		const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+		const pan = new THREE.Vector3();
+		if (keys.w) pan.add(fwd);
+		if (keys.s) pan.sub(fwd);
+		if (keys.d) pan.add(right);
+		if (keys.a) pan.sub(right);
+		if (pan.lengthSq() > 0) {
+			pan.normalize().multiplyScalar(PAN_SPEED * dt);
+			camera.position.add(pan);
+			controls.target.add(pan);
+		}
+		// Space = fly up, Shift+Space = fly down
+		if (keys.space) {
+			const up = keys.shift ? -1 : 1;
+			const v = PAN_SPEED * dt * up;
+			camera.position.y += v;
+			controls.target.y += v;
+		}
+		controls.update();
+	}
 	composer.render();
 	drawLabels();
 

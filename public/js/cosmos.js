@@ -115,25 +115,29 @@ function shadeRgb({ r, g, b }, k) {
 // radius, y-offset, node scale, importance (bigger = featured)
 const TYPE_LAYOUT = {
 	agent:      { radius: 0,  y: 0,    scale: 2.4, featured: true },
-	peer:       { radius: 9,  y: 0.5,  scale: 1.2 },
-	chat:       { radius: 11, y: -0.5, scale: 1.0 },
-	ttt:        { radius: 12, y: 0.8,  scale: 0.9 },
-	account:    { radius: 12, y: -0.8, scale: 0.9 },
-	pinned_fact: { radius: 13, y: -1.0, scale: 0.85 },
-	reminder:    { radius: 14, y: 0.6,  scale: 0.8 },
-	type:        { radius: 15, y: -0.3, scale: 0.8 },
-	milestone:   { radius: 17, y: 1.0,  scale: 1.0 },
-"chain.token": { radius: 18, y: 0.5, scale: 1.1 },
-	proto:      { radius: 30, y: 2.0,  scale: 0.9 },
-	typescript: { radius: 30, y: 0,    scale: 0.65 },
-	javascript: { radius: 30, y: 0,    scale: 0.65 },
-	json:       { radius: 30, y: -2.0, scale: 0.7 },
-	source:     { radius: 30, y: 0,    scale: 0.7 },
-	unknown:    { radius: 36, y: 0,    scale: 0.7 },
+	peer:       { radius: 5,  y: 0.5,  scale: 1.0 },
+	chat:       { radius: 7, y: -0.5, scale: 0.8 },
+	ttt:        { radius: 8, y: 0.8,  scale: 0.7 },
+	account:    { radius: 9, y: -0.8, scale: 0.7 },
+	pinned_fact: { radius: 10, y: -1.0, scale: 0.65 },
+	reminder:    { radius: 11, y: 0.6,  scale: 0.65 },
+	type:        { radius: 12, y: -0.3, scale: 0.65 },
+	milestone:   { radius: 13, y: 1.0,  scale: 0.7 },
+	"chain.token": { radius: 14, y: 0.5, scale: 0.9 },
+	"chain.coin.bucket": { radius: 15, y: 0.3, scale: 0.9 },
+	"chain.coin.offer": { radius: 16, y: -0.3, scale: 0.9 },
+	program:    { radius: 22, y: 1.5,  scale: 0.5 },
+	typescript: { radius: 28, y: 0,    scale: 0.45 },
+	javascript: { radius: 30, y: 0,    scale: 0.45 },
+	json:       { radius: 32, y: -2.0, scale: 0.45 },
+	source:     { radius: 34, y: 0,    scale: 0.45 },
+	proto:      { radius: 36, y: 2.0,  scale: 0.45 },
+	"chain.anchor": { radius: 55, y: 0, scale: 0.3 },
+	unknown:    { radius: 60, y: 0,    scale: 0.3 },
 };
 
 function layoutForType(typeKey) {
-	return TYPE_LAYOUT[typeKey] ?? { radius: 36, y: 0, scale: 0.7 };
+	return TYPE_LAYOUT[typeKey] ?? { radius: 60, y: 0, scale: 0.3 };
 }
 
 // Deterministic angle permutation so items of the same type don't
@@ -152,6 +156,13 @@ function jitterY(id) {
 	return (hash01(id) - 0.5) * 1.6;
 }
 
+// Small radial jitter so objects on the same ring don't all sit on
+// the exact same circle — creates a fuzzy orbital band instead of a
+// hard line, which visually spreads dense rings.
+function jitterR(id, radius) {
+	return radius * (0.88 + hash01(id + "rad") * 0.24);
+}
+
 // 0..1 stable hash from a string id; used for orbital phase, bobbing,
 // and twinkle so each ball drifts independently between reloads.
 function hash01(id) {
@@ -164,7 +175,7 @@ function hash01(id) {
 // Tuned so balls drift visibly but never wander far enough to break
 // the ring layout — picking and labels stay legible.
 const FLOAT_FREQ_RANGE = [0.25, 0.75];
-const FLOAT_AMP_RANGE  = [0.18, 0.55];
+const FLOAT_AMP_RANGE  = [0.09, 0.28];
 function floatAmp(id, axis) {
 	const [lo, hi] = FLOAT_AMP_RANGE;
 	return lo + hash01(id + "a" + axis) * (hi - lo);
@@ -177,9 +188,10 @@ function floatFreq(id, axis) {
 // Cursor-as-magnet tunables. The cursor's world ray pulls nearby balls
 // toward it so small targets are easier to click. Pull strength falls
 // off linearly to zero at MAGNET_RADIUS so distant balls stay put.
-const MAGNET_RADIUS = 4.5;     // world units around the cursor ray
-const MAGNET_PULL   = 0.55;    // fraction of the gap to close at full strength
-const MAGNET_LERP   = 0.20;    // smoothing per frame (also smooths back to rest)
+const MAGNET_RADIUS = 2.5;
+const MAGNET_PULL   = 0.55;
+const MAGNET_LERP   = 0.20;
+const SNAP_RADIUS   = 0.8;    // within this distance, ball snaps to cursor
 
 // Heat tunables: how fast a touched ball cools, how strongly heat shows.
 // HEAT_TAU_MS is the e-folding time: a ball touched 30s ago is at ~37%.
@@ -193,7 +205,8 @@ const HEAT_PULSE_FREQ     = 6.0;   // rad/s; faster than float to read as 'alive
 // any in-context block of the agent. Stacks on top of heat.
 const CONTEXT_BOOST  = 0.55;       // emissive boost added at rest when in-context
 const CONTEXT_HALO   = 0.32;       // halo opacity added when in-context
-const CONTEXT_SCALE  = 1.18;       // 18% larger when in-context
+const CONTEXT_SCALE  = 1.18;
+const SELECT_BOOST   = 3.2;        // emissive intensity boost when selected
 
 // Push-out tunables: when a ball intersects a highlight halo (selection or
 // in-context), it slides outward along the radial axis until its surface
@@ -252,15 +265,32 @@ export function buildCosmos(state, materials) {
 		byType.set(obj.typeKey, arr);
 	}
 
-	// Map child agent id \u2192 parent agent id, sourced from spawn_parent links.
-	// Subagents orbit their parent like moons rather than colliding at the
-	// agent ring (radius 0). Multi-level chains (subagent of a subagent) are
-	// supported because we sort agents by depth ascending below, so a parent
-	// is always already placed before its child reaches the loop.
-	const parentOf = new Map();
+	// Map object id → orbit-parent id from link relations.
+	// spawn_parent (agent subagents) takes priority; owner and token links
+	// create secondary orbital clusters. Objects orbit their parent like
+	// moons rather than sitting on the global type ring.
+	const orbitParentOf = new Map();
 	for (const link of state.links) {
-		if (link.relationKey === "spawn_parent") parentOf.set(link.sourceId, link.targetId);
+		if (link.relationKey === "spawn_parent") orbitParentOf.set(link.sourceId, link.targetId);
 	}
+	for (const link of state.links) {
+		if (link.relationKey === "owner" && !orbitParentOf.has(link.sourceId)) {
+			orbitParentOf.set(link.sourceId, link.targetId);
+		}
+	}
+	for (const link of state.links) {
+		if (link.relationKey === "token" && !orbitParentOf.has(link.sourceId)) {
+			orbitParentOf.set(link.sourceId, link.targetId);
+		}
+	}
+	// Precompute siblings for every parent so orbit positioning is stable.
+	const orbitChildren = new Map(); // parentId → [childId, ...]
+	for (const [childId, parentId] of orbitParentOf) {
+		const bucket = orbitChildren.get(parentId) ?? [];
+		bucket.push(childId);
+		orbitChildren.set(parentId, bucket);
+	}
+	for (const bucket of orbitChildren.values()) bucket.sort();
 	const spawnDepthOf = (obj) => Number(obj.scalars?.spawn_depth ?? 0);
 
 	const positions = new Map(); // id → THREE.Vector3
@@ -285,7 +315,7 @@ export function buildCosmos(state, materials) {
 		// Pre-compute primary-agent count + index for ring-distribution when
 		// the user has more than one top-level agent in their store.
 		const primaryCount = typeKey === "agent"
-			? sorted.filter((o) => !parentOf.has(o.id)).length
+			? sorted.filter((o) => !orbitParentOf.has(o.id)).length
 			: 0;
 
 		for (let i = 0; i < sorted.length; i++) {
@@ -293,20 +323,16 @@ export function buildCosmos(state, materials) {
 			let pos;
 			let placementScale = 1.0;
 			let isFeatured = !!featured;
-			if (typeKey === "agent" && parentOf.has(obj.id) && positions.has(parentOf.get(obj.id))) {
-				// Subagent: small orbit around the parent. Multiple siblings fan
+			if (orbitParentOf.has(obj.id) && positions.has(orbitParentOf.get(obj.id))) {
+				// Satellite: orbit around the parent. Multiple siblings fan
 				// around the parent on a deterministic ring (XZ plane), each
 				// level out adds a touch of radius so deeper chains don't pile.
-				const parentId = parentOf.get(obj.id);
+				const parentId = orbitParentOf.get(obj.id);
 				const parentPos = positions.get(parentId);
-				const siblings = sorted.filter((o) => parentOf.get(o.id) === parentId);
-				const sIdx = siblings.findIndex((o) => o.id === obj.id);
+				const siblings = orbitChildren.get(parentId) ?? [];
+				const sIdx = siblings.indexOf(obj.id);
 				const sCount = siblings.length;
-				const depth = Math.max(1, spawnDepthOf(obj));
-				// Park the subagent's center just outside the parent's halo so it
-				// reads as a separate world from the start \u2014 the per-frame push
-				// then only has to handle dynamic intersections (e.g. when the
-				// parent's halo grows during a context-active or selection state).
+				const depth = (typeKey === "agent" ? Math.max(1, spawnDepthOf(obj)) : 1);
 				const parentOrbit = orbits.get(parentId);
 				const parentHaloR = parentOrbit?.haloScale ?? 4;
 				const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
@@ -323,7 +349,7 @@ export function buildCosmos(state, materials) {
 				// unless multiple primaries exist, in which case spread them on a
 				// tiny inner ring so they don't stack.
 				const primaryIdx = typeKey === "agent"
-					? sorted.filter((o) => !parentOf.has(o.id)).findIndex((o) => o.id === obj.id)
+					? sorted.filter((o) => !orbitParentOf.has(o.id)).findIndex((o) => o.id === obj.id)
 					: i;
 				const ringCount = typeKey === "agent" ? primaryCount : sorted.length;
 				const ringRadius = typeKey === "agent" && primaryCount > 1 ? 2 : radius;
@@ -331,13 +357,13 @@ export function buildCosmos(state, materials) {
 				const yJitter = jitterY(obj.id);
 				const baseY = y + yJitter;
 				pos = new THREE.Vector3(
-					Math.cos(theta0) * ringRadius,
+					Math.cos(theta0) * jitterR(obj.id, ringRadius),
 					baseY,
-					Math.sin(theta0) * ringRadius,
+					Math.sin(theta0) * jitterR(obj.id, ringRadius),
 				);
 			}
-			// Log-scaled size by change count (floor at 0.6).
-			const changeScale = Math.max(0.6, Math.min(2.2, Math.log10(1 + obj.changeCount) * 0.8 + 0.7));
+			// Log-scaled size by change count (floor at 0.5, gentler growth).
+			const changeScale = Math.max(0.5, Math.min(1.6, Math.log10(1 + obj.changeCount) * 0.5 + 0.6));
 			const r = scale * placementScale * changeScale * 0.6;
 			let baseEmissive;
 			let mat;
@@ -358,6 +384,8 @@ export function buildCosmos(state, materials) {
 			} else {
 				// Everything else is a planet: reflective surface, almost no self-
 				// glow at rest, lit by Graice's PointLight from the origin.
+				// Slightly raised metalness + lowered roughness so nearby PointLights
+				// (e.g. the selection follow-light) create visible specular highlights.
 				baseEmissive = 0.05;
 				mat = new THREE.MeshStandardMaterial({
 					// White color so the procedural texture's tones come through pure;
@@ -366,8 +394,8 @@ export function buildCosmos(state, materials) {
 					map: surface,
 					emissive: color,
 					emissiveIntensity: baseEmissive,
-					metalness: 0.05,
-					roughness: 0.85,
+					metalness: 0.12,
+					roughness: 0.72,
 				});
 			}
 			const mesh = new THREE.Mesh(materials.sphere, mat);
@@ -421,6 +449,9 @@ export function buildCosmos(state, materials) {
 				pushX: 0,
 				pushY: 0,
 				pushZ: 0,
+				colPushX: 0,
+				colPushY: 0,
+				colPushZ: 0,
 				// Featured balls (the agent) shouldn't drift toward the cursor;
 				// the world is built around them as a stable anchor.
 				canMagnet: !isFeatured,
@@ -444,44 +475,81 @@ export function buildCosmos(state, materials) {
 			});
 		}
 	}
+	// Second pass: any object whose parent was placed in a later type group
+	// gets promoted from its type ring into orbit around the now-known parent.
+	for (const [childId, parentId] of orbitParentOf) {
+		const node = nodes.get(childId);
+		if (!node || !positions.has(parentId)) continue;
+		const o = orbits.get(childId);
+		const parentPos = positions.get(parentId);
+		const siblings = orbitChildren.get(parentId) ?? [];
+		const sIdx = siblings.indexOf(childId);
+		const sCount = siblings.length;
+		const depth = 1;
+		const parentOrbit = orbits.get(parentId);
+		const parentHaloR = parentOrbit?.haloScale ?? 4;
+		const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
+		const theta = angleFor(sIdx, sCount, "sub" + parentId);
+		const newPos = new THREE.Vector3(
+			parentPos.x + Math.cos(theta) * orbitR,
+			parentPos.y + jitterY(childId) * 0.4,
+			parentPos.z + Math.sin(theta) * orbitR,
+		);
+		node.mesh.position.copy(newPos);
+		node.halo.position.copy(newPos);
+		positions.get(childId).copy(newPos);
+		o.baseX = newPos.x;
+		o.baseY = newPos.y;
+		o.baseZ = newPos.z;
+	}
 
 
 
 	// Links --------------------------------------------------------
 	const linkMeshes = [];
-	// Subagent lineage (spawn_parent) is drawn thicker, brighter, and with a
-	// larger arch so it reads as a parent→child tree even in a dense cosmos.
+	const LINK_STYLE = {
+		spawn_parent:  { color: "#ffc857", opacity: 0.85, width: 0.075 },
+		owner:         { color: "#60a5fa", opacity: 0.7,  width: 0.05 },
+		token:         { color: "#4ade80", opacity: 0.7,  width: 0.05 },
+		principal:     { color: "#f472b6", opacity: 0.6,  width: 0.04 },
+		target:        { color: "#a78bfa", opacity: 0.5,  width: 0.035 },
+		context_source:{ color: "#94a3b8", opacity: 0.4,  width: 0.03 },
+	};
+	const DEFAULT_LINK_STYLE = { color: "#5eead4", opacity: 0.5, width: 0.035 };
 	for (const link of state.links) {
 		const a = positions.get(link.sourceId);
 		const b = positions.get(link.targetId);
 		if (!a || !b) continue;
 
+		const style = LINK_STYLE[link.relationKey] ?? DEFAULT_LINK_STYLE;
 		const isLineage = link.relationKey === "spawn_parent";
 
 		const mid = a.clone().add(b).multiplyScalar(0.5);
-		const lift = Math.max(2, a.distanceTo(b) * (isLineage ? 0.32 : 0.2));
+		const lift = Math.max(1, a.distanceTo(b) * (isLineage ? 0.32 : 0.2));
 		const outward = mid.clone().normalize().multiplyScalar(lift * 0.3);
 		mid.add(new THREE.Vector3(0, lift, 0)).add(outward);
 
 		const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-		const geom = new THREE.TubeGeometry(curve, 48, isLineage ? 0.075 : 0.04, 6, false);
+		const geom = new THREE.TubeGeometry(curve, 48, style.width, 6, false);
 		const mat = new THREE.MeshBasicMaterial({
-			color: new THREE.Color(isLineage ? "#ffc857" : "#5eead4"),
+			color: new THREE.Color(style.color),
 			transparent: true,
-			opacity: isLineage ? 0.85 : 0.6,
+			opacity: style.opacity,
 		});
 		const mesh = new THREE.Mesh(geom, mat);
-		mesh.userData = { kind: "link", link, isLineage };
+		mesh.userData = { kind: "link", link, isLineage, linkWidth: style.width };
 		group.add(mesh);
 		linkMeshes.push(mesh);
 	}
 
-	// Selection indicator: the selected ball's halo material is tinted white
-	// in tick(), with a small extra opacity boost so even non-featured balls
-	// without context halos still light up clearly. No separate mesh \u2014 the
-	// dashed rings already encode the ball's presence; the color shift is
-	// what makes the selection legible.
-	const WHITE = new THREE.Color(0xffffff);
+	// Selection indicator: the selected ball gets a strong emissive boost
+	// (SELECT_BOOST) so it glows brightly. A PointLight follows it so nearby
+	// planets pick up real specular reflections. The halo keeps its type color
+	// and only shows context/heat state.
+	const selectLight = new THREE.PointLight(0xffffff, 0, 18, 2.0);
+	selectLight.visible = false;
+	group.add(selectLight);
+	let _lastLightPos = new THREE.Vector3();
 	let selectedId = null;
 
 	// ── Per-frame float + tube re-anchoring ────────────────────
@@ -515,17 +583,51 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
-	// Drive the white selection halo to the currently-selected ball. Pass null
-	// to clear it.
+	// Drive the selection glow + follow-light to the currently-selected ball.
+	// Pass null to clear it.
 	function setSelected(id) {
 		selectedId = id ?? null;
+		if (selectedId) {
+			const node = nodes.get(selectedId);
+			if (node) {
+				const { color } = colorForType(node.mesh.userData.typeKey);
+				selectLight.color.set(color);
+				selectLight.intensity = 3.5;
+				selectLight.visible = true;
+			}
+		} else {
+			selectLight.visible = false;
+			selectLight.intensity = 0;
+		}
 	}
 
 	function tick(elapsedSec, cursorRay) {
 		const now = Date.now();
 
-		// Phase 1 \u2014 float + cursor-magnet, stored as `_floatX/Y/Z` so phase 2
+		// Phase 1 — float + cursor-magnet, stored as `_floatX/Y/Z` so phase 2
 		// can read every ball's tentative position before any push runs.
+		let snappedId = null;
+		let snapClosest = null;
+		let snapMinD = Infinity;
+		if (cursorRay) {
+			for (const [id, o] of orbits) {
+				if (!o.canMagnet) continue;
+				const node = nodes.get(id);
+				if (!node || !node.mesh.visible) continue;
+				const fx = o.baseX + Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
+				const fy = o.baseY + Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
+				const fz = o.baseZ + Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
+				tmpBase.set(fx, fy, fz);
+				cursorRay.closestPointToPoint(tmpBase, tmpClosest);
+				const d = tmpBase.distanceTo(tmpClosest);
+				if (d < snapMinD) {
+					snapMinD = d;
+					snapClosest = tmpClosest.clone();
+					snappedId = id;
+				}
+			}
+			if (snapMinD > SNAP_RADIUS) snappedId = null;
+		}
 		for (const [id, o] of orbits) {
 			const node = nodes.get(id);
 			if (!node) continue;
@@ -533,7 +635,18 @@ export function buildCosmos(state, materials) {
 			const fy = o.baseY + Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
 			const fz = o.baseZ + Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
 			let tgtX = 0, tgtY = 0, tgtZ = 0;
-			if (cursorRay && o.canMagnet) {
+		if (cursorRay && o.canMagnet && node.mesh.visible) {
+			if (id === snappedId && snapClosest) {
+				// Snap candidate: aim for the cursor position with full strength
+				// but still lerp so the approach stays smooth.
+				tgtX = snapClosest.x - fx;
+				tgtY = snapClosest.y - fy;
+				tgtZ = snapClosest.z - fz;
+				o.magnetX += (tgtX - o.magnetX) * MAGNET_LERP;
+				o.magnetY += (tgtY - o.magnetY) * MAGNET_LERP;
+				o.magnetZ += (tgtZ - o.magnetZ) * MAGNET_LERP;
+			} else if (!snappedId) {
+				// No snap candidate — regular magnet pull
 				tmpBase.set(fx, fy, fz);
 				cursorRay.closestPointToPoint(tmpBase, tmpClosest);
 				const d = tmpBase.distanceTo(tmpClosest);
@@ -543,10 +656,21 @@ export function buildCosmos(state, materials) {
 					tgtY = (tmpClosest.y - fy) * k;
 					tgtZ = (tmpClosest.z - fz) * k;
 				}
+				o.magnetX += (tgtX - o.magnetX) * MAGNET_LERP;
+				o.magnetY += (tgtY - o.magnetY) * MAGNET_LERP;
+				o.magnetZ += (tgtZ - o.magnetZ) * MAGNET_LERP;
+			} else {
+				// Another ball is snapped — lose magnetism and hover back
+				o.magnetX += (0 - o.magnetX) * MAGNET_LERP;
+				o.magnetY += (0 - o.magnetY) * MAGNET_LERP;
+				o.magnetZ += (0 - o.magnetZ) * MAGNET_LERP;
 			}
-			o.magnetX += (tgtX - o.magnetX) * MAGNET_LERP;
-			o.magnetY += (tgtY - o.magnetY) * MAGNET_LERP;
-			o.magnetZ += (tgtZ - o.magnetZ) * MAGNET_LERP;
+		} else {
+			// No cursor or can't magnet — drift back
+			o.magnetX += (0 - o.magnetX) * MAGNET_LERP;
+			o.magnetY += (0 - o.magnetY) * MAGNET_LERP;
+			o.magnetZ += (0 - o.magnetZ) * MAGNET_LERP;
+		}
 			o._floatX = fx + o.magnetX;
 			o._floatY = fy + o.magnetY;
 			o._floatZ = fz + o.magnetZ;
@@ -580,16 +704,81 @@ export function buildCosmos(state, materials) {
 			});
 		}
 
+		// Phase 2.5 — ball-ball collision repulsion.
+		// Only visible balls participate; hidden/muted ones are ignored.
+		const colBalls = [];
+		for (const [id, o] of orbits) {
+			const node = nodes.get(id);
+			if (!node || !node.mesh.visible) continue;
+			colBalls.push({ id, o, r: o.baseRadius });
+		}
+		const COL_PADDING = 0.15;
+		// Spatial hash: bucket objects by their (integer) float position.
+		// Cell size = 3 units; only check same and adjacent cells.
+		const cellSize = 3;
+		const grid = new Map();
+		for (const b of colBalls) {
+			const cx = Math.floor(b.o._floatX / cellSize);
+			const cy = Math.floor(b.o._floatY / cellSize);
+			const cz = Math.floor(b.o._floatZ / cellSize);
+			const key = `${cx},${cy},${cz}`;
+			if (!grid.has(key)) grid.set(key, []);
+			grid.get(key).push(b);
+		}
+		for (const [key, cell] of grid) {
+			const [cx, cy, cz] = key.split(",").map(Number);
+			const neighbors = [];
+			for (let dx = -1; dx <= 1; dx++) {
+				for (let dy = -1; dy <= 1; dy++) {
+					for (let dz = -1; dz <= 1; dz++) {
+						const nkey = `${cx+dx},${cy+dy},${cz+dz}`;
+						if (grid.has(nkey)) neighbors.push(...grid.get(nkey));
+					}
+				}
+			}
+			for (let i = 0; i < cell.length; i++) {
+				const a = cell[i];
+				const oa = a.o;
+				for (let j = 0; j < neighbors.length; j++) {
+					const b = neighbors[j];
+					if (a.id >= b.id) continue;
+					const ob = b.o;
+					const ddx = oa._floatX - ob._floatX;
+					const ddy = oa._floatY - ob._floatY;
+					const ddz = oa._floatZ - ob._floatZ;
+					const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
+					const minD = a.r + b.r + COL_PADDING;
+					if (dSq >= minD * minD || dSq < 1e-6) continue;
+					const d = Math.sqrt(dSq);
+					const overlap = minD - d;
+					const inv = 1 / d;
+					const fx = ddx * inv * overlap * 0.5;
+					const fy = ddy * inv * overlap * 0.5;
+					const fz = ddz * inv * overlap * 0.5;
+					oa._colPushX = (oa._colPushX || 0) + fx;
+					oa._colPushY = (oa._colPushY || 0) + fy;
+					oa._colPushZ = (oa._colPushZ || 0) + fz;
+					ob._colPushX = (ob._colPushX || 0) - fx;
+					ob._colPushY = (ob._colPushY || 0) - fy;
+					ob._colPushZ = (ob._colPushZ || 0) - fz;
+				}
+			}
+		}
+
 		// Phase 3 \u2014 compute push offset against every highlight, smooth, and
 		// commit the final position + spin + heat/emissive/halo state.
 		for (const [id, o] of orbits) {
 			const node = nodes.get(id);
 			if (!node) continue;
-			let pushTgtX = 0, pushTgtY = 0, pushTgtZ = 0;
+			let pushTgtX = o._colPushX || 0;
+			let pushTgtY = o._colPushY || 0;
+			let pushTgtZ = o._colPushZ || 0;
+			o._colPushX = o._colPushY = o._colPushZ = 0;
 			// Featured balls (the agent stars) are anchored: their float position
 			// is the world's reference frame, so we never push them. Other balls
-			// glide around them. The pushTgt accumulator stays at zero \u2014 any
-			// previous push from a transient highlight smoothly relaxes back to 0.
+			// glide around them. The pushTgt accumulator starts from collision
+			// repulsion; any previous push from a transient highlight smoothly
+			// relaxes back to 0.
 			if (o.canMagnet) for (const h of highlightBuf) {
 				if (h.sourceId === id) continue;
 				const dx = o._floatX - h.x;
@@ -623,7 +812,8 @@ export function buildCosmos(state, materials) {
 				? Math.exp(-dt / HEAT_TAU_MS)
 				: 0;
 			const ctx = o.contextActive ? CONTEXT_BOOST : 0;
-			node.mesh.material.emissiveIntensity = o.baseEmissive + ctx + heat * HEAT_EMISSIVE_BOOST;
+			const isSelected = id === selectedId;
+			node.mesh.material.emissiveIntensity = o.baseEmissive + ctx + heat * HEAT_EMISSIVE_BOOST + (isSelected ? SELECT_BOOST : 0);
 			const pulseScale = 1 + heat * HEAT_SCALE_AMP * Math.sin(elapsedSec * HEAT_PULSE_FREQ + o.pulsePhase);
 			const ctxScale = o.contextActive ? CONTEXT_SCALE : 1;
 			node.mesh.scale.setScalar(o.baseRadius * pulseScale * ctxScale);
@@ -632,27 +822,26 @@ export function buildCosmos(state, materials) {
 			// scale follows the same pulse + context multipliers as the ball.
 			node.halo.position.set(x, y, z);
 			node.halo.scale.setScalar(o.haloScale * pulseScale * ctxScale);
-			const isSelected = id === selectedId;
-			// One sin wave drives both the opacity bump and the dash-length
-			// undulation when selected, so the breathing reads as a single,
-			// coherent pulse rather than two separate animations.
-			const selectWave = isSelected ? Math.sin(elapsedSec * 2.4) : 0;
-			const selectOpacity = isSelected ? 0.45 + selectWave * 0.10 : 0;
+			// Halo opacity: base + context + heat only. Selection glow is on
+			// the mesh emissive, not the halo color.
 			const targetHaloOpacity =
 				o.baseHaloOpacity +
 				(o.contextActive ? CONTEXT_HALO : 0) +
-				heat * HEAT_HALO_BOOST +
-				selectOpacity;
+				heat * HEAT_HALO_BOOST;
 			const curHaloOpacity = node.haloMat.opacity;
 			node.haloMat.opacity = curHaloOpacity + (targetHaloOpacity - curHaloOpacity) * 0.18;
-			// Color tint: white when selected, otherwise the ball's type color.
-			node.haloMat.color.copy(isSelected ? WHITE : o.haloColor);
-			// Dash undulation: dashSize on the selected ball oscillates around its
-			// resting value so the segments visibly breathe in length. The gap
-			// stays fixed so the dash count per circle doesn't churn \u2014 only the
-			// individual dashes grow and shrink. Non-selected balls get the
-			// resting value (idempotent assignment, cheap uniform write).
-			node.haloMat.dashSize = isSelected ? 0.10 + selectWave * 0.06 : 0.10;
+			node.haloMat.color.copy(o.haloColor);
+			node.haloMat.dashSize = 0.10;
+		}
+		// Move the selection follow-light to the selected ball's current position.
+		// Only update when the ball has actually moved (> 0.05) to avoid
+		// re-uploading light uniforms to all 600+ MeshStandardMaterials every frame.
+		if (selectedId) {
+			const selPos = positions.get(selectedId);
+			if (selPos && selPos.distanceToSquared(_lastLightPos) > 0.0025) {
+				selectLight.position.copy(selPos);
+				_lastLightPos.copy(selPos);
+			}
 		}
 		for (const m of linkMeshes) {
 			const link = m.userData.link;
@@ -661,14 +850,14 @@ export function buildCosmos(state, materials) {
 			if (!a || !b) continue;
 			tmpA.copy(a); tmpB.copy(b);
 			tmpMid.copy(tmpA).add(tmpB).multiplyScalar(0.5);
-			const lift = Math.max(2, tmpA.distanceTo(tmpB) * (m.userData.isLineage ? 0.32 : 0.2));
+			const lift = Math.max(1, tmpA.distanceTo(tmpB) * (m.userData.isLineage ? 0.32 : 0.2));
 			if (tmpMid.lengthSq() > 1e-6) {
 				tmpOut.copy(tmpMid).normalize().multiplyScalar(lift * 0.3);
 				tmpMid.add(tmpOut);
 			}
 			tmpMid.addScaledVector(yAxis, lift);
 			const curve = new THREE.QuadraticBezierCurve3(tmpA.clone(), tmpMid.clone(), tmpB.clone());
-			const newGeom = new THREE.TubeGeometry(curve, 48, m.userData.isLineage ? 0.075 : 0.04, 6, false);
+			const newGeom = new THREE.TubeGeometry(curve, 48, m.userData.linkWidth, 6, false);
 			m.geometry.dispose();
 
 			m.geometry = newGeom;

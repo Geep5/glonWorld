@@ -242,26 +242,29 @@ function render(detail, changesResponse) {
 }
 
 
-function renderCoinSection(cs) {
-	els.coinHeader.innerHTML = "";
-	append(els.coinHeader, row("token", shortId(cs.tokenId)));
-	append(els.coinHeader, row("coins", `${cs.unspentCount} unspent / ${cs.coinCount} total`));
-	append(els.coinHeader, row("supply", cs.totalAmount));
+	function renderCoinSection(cs) {
+		els.coinHeader.innerHTML = "";
+		const tokenLabel = cs.tokenName
+			? (cs.tokenSymbol ? `${cs.tokenName} (${cs.tokenSymbol})` : cs.tokenName)
+			: (cs.tokenSymbol || shortId(cs.tokenId));
+		append(els.coinHeader, row("token", tokenLabel));
+		append(els.coinHeader, row("coins", `${cs.unspentCount} unspent / ${cs.coinCount} total`));
+		append(els.coinHeader, row("supply", cs.totalAmount));
 
-	els.coinList.innerHTML = "";
-	const entries = Object.entries(cs.coins);
-	if (entries.length === 0) {
-		els.coinList.textContent = "No coins yet.";
-	} else {
-		for (const [coinId, coin] of entries) {
-			const d = document.createElement("div");
-			d.className = "token-balance-row";
-			const status = coin.spent ? "spent" : "unspent";
-			d.innerHTML = `<span class="token-balance-pubkey">${shortId(coinId)}</span><span class="token-balance-value">${coin.amount} ${status}</span>`;
-			els.coinList.appendChild(d);
+		els.coinList.innerHTML = "";
+		const entries = Object.entries(cs.coins);
+		if (entries.length === 0) {
+			els.coinList.textContent = "No coins yet.";
+		} else {
+			for (const [coinId, coin] of entries) {
+				const d = document.createElement("div");
+				d.className = "token-balance-row";
+				const status = coin.spent ? "spent" : "unspent";
+				d.innerHTML = `<span class="token-balance-pubkey">${shortId(coinId)}</span><span class="token-balance-value">${coin.amount} ${status}</span>`;
+				els.coinList.appendChild(d);
+			}
 		}
 	}
-}
 
 
 // ── DOM helpers ────────────────────────────────────────────────
