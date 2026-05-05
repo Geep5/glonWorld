@@ -986,10 +986,14 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 		pointer-events: none;
 		z-index: 200;
 	}
-.chat-window.minimized .chat-body {
-	display: none;
-}
-
+	.chat-window.minimized {
+		height: auto !important;
+		max-height: 32px;
+		overflow: hidden;
+	}
+	.chat-window.minimized .chat-body {
+		display: none;
+	}
 .chat-header {
 	display: flex;
 	align-items: center;
