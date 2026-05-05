@@ -595,7 +595,20 @@ function bindUI() {
 		makeResizable("inspector", "glonAstrolabe.panelSize.inspector");
 		makeResizable("crypto",    "glonAstrolabe.panelSize.crypto");
 		makeResizable("livelog",   "glonAstrolabe.panelSize.livelog");
-}
+
+		// Collapsible panels
+		document.querySelectorAll(".panel-collapse").forEach((btn) => {
+			const panelId = btn.dataset.panel;
+			const panel = document.getElementById(panelId);
+			if (!panel) return;
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				const collapsed = panel.classList.toggle("collapsed");
+				btn.textContent = collapsed ? "▲" : "─";
+				btn.title = collapsed ? "Expand" : "Collapse";
+			});
+		});
+	}
 
 
 

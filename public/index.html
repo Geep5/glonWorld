@@ -35,8 +35,7 @@
 	</header>
 
 	<aside id="legend">
-		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
-		<h3>Types</h3>
+		<h3>Types <button class="panel-collapse" data-panel="legend" title="Collapse">─</button></h3>
 		<ul id="legend-list"></ul>
 		<h3>Lineage</h3>
 		<ul class="block-legend">
@@ -61,19 +60,20 @@
 	</aside>
 
 	<aside id="jobs">
-		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
-		<h3>AI jobs <span id="jobs-count" class="count"></span></h3>
+		<h3>AI jobs <span id="jobs-count" class="count"></span> <button class="panel-collapse" data-panel="jobs" title="Collapse">─</button></h3>
 		<ul id="jobs-list" class="jobs-list"></ul>
 	</aside>
 
 	<aside id="crypto">
-		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
-		<h3>Crypto <span id="crypto-count" class="count"></span></h3>
+		<h3>Crypto <span id="crypto-count" class="count"></span> <button class="panel-collapse" data-panel="crypto" title="Collapse">─</button></h3>
 		<ul id="crypto-list" class="crypto-list"></ul>
 	</aside>
 
 	<aside id="inspector">
-		<div class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</div>
+		<div class="panel-bar">
+			<span>Inspector</span>
+			<button class="panel-collapse" data-panel="inspector" title="Collapse">─</button>
+		</div>
 		<div id="inspector-empty" class="inspector-empty">
 			<h2>Select an object</h2>
 			<p>Click any ball to inspect it. The glowing ball is the agent. Activity heat lights up balls touched by recent changes.</p>
@@ -142,7 +142,7 @@
 
 	<aside id="livelog" class="collapsed" aria-label="Live event log">
 		<header class="livelog-header">
-			<span class="panel-grip" title="drag to move">&#x22ee;&#x22ee;</span>
+			<button class="panel-collapse" data-panel="livelog" title="Expand">▲</button>
 			<span class="livelog-dot"></span>
 			<span class="livelog-title">live</span>
 			<span id="livelog-status" class="livelog-status"></span>
