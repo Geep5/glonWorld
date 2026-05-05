@@ -20,7 +20,7 @@ import { colorForType } from "./colors.js";
 	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
-	import { getRender, setRender, applyToMesh, updateOverlays } from "./planet-styles.js";
+	import { getRender, setRender, clearRender, applyToMesh, updateOverlays } from "./planet-styles.js";
 	// ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -184,10 +184,40 @@ function setupThree() {
 	// Planet render changes from inspector — update mesh immediately
 	window.addEventListener("planet-render-changed", (e) => {
 		const node = cosmosCtx?.nodes?.get(e.detail.objectId);
-		const render = e.detail.render || getRender(e.detail.objectId);
-		if (render) {
-			setRender(e.detail.objectId, render);
-			if (node?.mesh) applyToMesh(node.mesh, render);
+		if (e.detail.render === null) {
+			// Reset: clear stored style and re-apply defaults
+			clearRender(e.detail.objectId);
+			if (node?.mesh) {
+				const typeKey = node.mesh.userData.typeKey;
+				const { hex } = colorForType(typeKey);
+				node.mesh.material.color.set(hex);
+				node.mesh.material.emissive.set(hex);
+				// Remove any custom children added by Three.js renders
+				const group = node.mesh.userData._planetGroup;
+				if (group) {
+					while (group.children.length > 0) {
+						const child = group.children[0];
+						if (child.geometry) child.geometry.dispose();
+						if (child.material) {
+							if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+							else child.material.dispose();
+						}
+						group.remove(child);
+					}
+				}
+				// Remove canvas texture if present
+				if (node.mesh.material.map) {
+					node.mesh.material.map.dispose();
+					node.mesh.material.map = null;
+				}
+				// Restore default emissive intensity based on type
+				const isFeatured = typeKey === "agent";
+				node.mesh.material.emissiveIntensity = isFeatured ? 1.4 : 0.05;
+				node.mesh.material.needsUpdate = true;
+			}
+		} else if (e.detail.render) {
+			setRender(e.detail.objectId, e.detail.render);
+			if (node?.mesh) applyToMesh(node.mesh, e.detail.render);
 		}
 	});
 	canvas.addEventListener("pointermove", onPointerMove);

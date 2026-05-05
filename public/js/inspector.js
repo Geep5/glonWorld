@@ -34,9 +34,9 @@
 		forgeInput: document.getElementById("insp-forge-input"),
 		forgeSend: document.getElementById("insp-forge-send"),
 		forgeApply: document.getElementById("insp-forge-apply"),
+		forgeReset: document.getElementById("insp-forge-reset"),
 		forgeKey: document.getElementById("insp-forge-key"),
 		forgeKeySave: document.getElementById("insp-forge-key-save"),
-		// Landing placeholder stats
 		stats: document.getElementById("stats"),
 	};
 
@@ -47,10 +47,10 @@
 		inputEl: els.forgeInput,
 		sendBtn: els.forgeSend,
 		applyBtn: els.forgeApply,
+		resetBtn: els.forgeReset,
 		keyInput: els.forgeKey,
 		keySaveBtn: els.forgeKeySave,
 	});
-
 	let handlers = {};
 
 export function bindInspector({ onNavigate, onInject }) {

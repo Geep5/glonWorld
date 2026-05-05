@@ -68,43 +68,53 @@ let currentTargetId = null;
  * Wire up the forge UI inside the inspector.
  * Call once when the inspector initializes.
  */
-export function init({
-	historyEl,
-	statusEl,
-	inputEl,
-	sendBtn,
-	applyBtn,
-	keyInput,
-	keySaveBtn,
-}) {
-	// Load saved key
-	keyInput.value = localStorage.getItem(API_KEY_LS) || "";
+	export function init({
+		historyEl,
+		statusEl,
+		inputEl,
+		sendBtn,
+		applyBtn,
+		resetBtn,
+		keyInput,
+		keySaveBtn,
+	}) {
+		// Load saved key
+		keyInput.value = localStorage.getItem(API_KEY_LS) || "";
 
-	keySaveBtn.addEventListener("click", () => {
-		localStorage.setItem(API_KEY_LS, keyInput.value.trim());
-		statusEl.textContent = "Key saved.";
-	});
+		keySaveBtn.addEventListener("click", () => {
+			localStorage.setItem(API_KEY_LS, keyInput.value.trim());
+			statusEl.textContent = "Key saved.";
+		});
 
-	sendBtn.addEventListener("click", () => doSend({ historyEl, statusEl, inputEl, applyBtn, keyInput }));
-	inputEl.addEventListener("keydown", (e) => {
-		if (e.key === "Enter") doSend({ historyEl, statusEl, inputEl, applyBtn, keyInput });
-	});
+		sendBtn.addEventListener("click", () => doSend({ historyEl, statusEl, inputEl, applyBtn, keyInput }));
+		inputEl.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") doSend({ historyEl, statusEl, inputEl, applyBtn, keyInput });
+		});
 
-	applyBtn.addEventListener("click", () => {
-		if (!lastAssistantText || !currentTargetId) return;
-		const render = parseForgeResponse(lastAssistantText);
-		if (render) {
+		applyBtn.addEventListener("click", () => {
+			if (!lastAssistantText || !currentTargetId) return;
+			const render = parseForgeResponse(lastAssistantText);
+			if (render) {
+				window.dispatchEvent(new CustomEvent("planet-render-changed", {
+					detail: { objectId: currentTargetId, render }
+				}));
+				statusEl.textContent = "Applied.";
+				statusEl.className = "forge-status ok";
+			} else {
+				statusEl.textContent = "No valid render JSON found.";
+				statusEl.className = "forge-status err";
+			}
+		});
+
+		resetBtn.addEventListener("click", () => {
+			if (!currentTargetId) return;
 			window.dispatchEvent(new CustomEvent("planet-render-changed", {
-				detail: { objectId: currentTargetId, render }
+				detail: { objectId: currentTargetId, render: null }
 			}));
-			statusEl.textContent = "Applied.";
-			statusEl.className = "forge-status ok";
-		} else {
-			statusEl.textContent = "No valid render JSON found.";
-			statusEl.className = "forge-status err";
-		}
-	});
-}
+			statusEl.textContent = "Reset to default.";
+			statusEl.className = "forge-status";
+		});
+	}
 
 export function setTarget(objectId) {
 	currentTargetId = objectId;
