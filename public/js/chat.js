@@ -64,8 +64,14 @@ class ChatWindow {
 		this.status.className = "chat-status";
 		this.body.appendChild(this.status);
 
-		DOCK.appendChild(this.panel);
+		// Resize handle (bottom-right corner)
+		const resizeHandle = document.createElement("div");
+		resizeHandle.className = "chat-resize-handle";
+		resizeHandle.title = "drag to resize";
+		this.panel.appendChild(resizeHandle);
+		this.makeResizable(resizeHandle);
 
+		DOCK.appendChild(this.panel);
 		// Events
 		header.querySelector(".chat-min").addEventListener("click", () => this.toggleMinimize());
 		header.querySelector(".chat-close").addEventListener("click", () => this.close());
@@ -131,12 +137,60 @@ class ChatWindow {
 		handle.addEventListener("pointercancel", end);
 	}
 
+	makeResizable(handle) {
+		let pid = null;
+		let sx = 0, sy = 0, sw = 0, sh = 0;
+
+		handle.addEventListener("pointerdown", (e) => {
+			if (e.button !== 0) return;
+			const rect = this.panel.getBoundingClientRect();
+			sx = e.clientX;
+			sy = e.clientY;
+			sw = rect.width;
+			sh = rect.height;
+			pid = e.pointerId;
+			handle.setPointerCapture(pid);
+			e.preventDefault();
+			e.stopPropagation();
+		});
+
+		handle.addEventListener("pointermove", (e) => {
+			if (e.pointerId !== pid) return;
+			const minW = 200;
+			const minH = 120;
+			const newW = Math.max(minW, sw + (e.clientX - sx));
+			const newH = Math.max(minH, sh + (e.clientY - sy));
+			this.panel.style.width = newW + "px";
+			this.panel.style.height = newH + "px";
+		});
+
+		const end = (e) => {
+			if (e.pointerId !== pid) return;
+			if (handle.hasPointerCapture(pid)) handle.releasePointerCapture(pid);
+			pid = null;
+			this.saveSize();
+		};
+		handle.addEventListener("pointerup", end);
+		handle.addEventListener("pointercancel", end);
+	}
+
 	savePosition() {
 		try {
-			localStorage.setItem(
-				`glonAstrolabe.chatPos.${this.agentId}`,
-				JSON.stringify({ left: this.panel.style.left, top: this.panel.style.top })
-			);
+			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
+			const pos = raw ? JSON.parse(raw) : {};
+			pos.left = this.panel.style.left;
+			pos.top = this.panel.style.top;
+			localStorage.setItem(`glonAstrolabe.chatPos.${this.agentId}`, JSON.stringify(pos));
+		} catch { /* ignore */ }
+	}
+
+	saveSize() {
+		try {
+			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
+			const pos = raw ? JSON.parse(raw) : {};
+			pos.width = parseFloat(this.panel.style.width) || this.panel.offsetWidth;
+			pos.height = parseFloat(this.panel.style.height) || this.panel.offsetHeight;
+			localStorage.setItem(`glonAstrolabe.chatPos.${this.agentId}`, JSON.stringify(pos));
 		} catch { /* ignore */ }
 	}
 
@@ -145,8 +199,10 @@ class ChatWindow {
 			const raw = localStorage.getItem(`glonAstrolabe.chatPos.${this.agentId}`);
 			if (raw) {
 				const pos = JSON.parse(raw);
-				this.panel.style.left = pos.left;
-				this.panel.style.top = pos.top;
+				if (pos.left != null) this.panel.style.left = pos.left;
+				if (pos.top != null) this.panel.style.top = pos.top;
+				if (pos.width != null) this.panel.style.width = pos.width + "px";
+				if (pos.height != null) this.panel.style.height = pos.height + "px";
 				this.panel.style.right = "auto";
 				this.panel.style.bottom = "auto";
 				return;
