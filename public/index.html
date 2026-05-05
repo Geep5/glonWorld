@@ -109,39 +109,30 @@
 			</div>
 
 			<div class="insp-section" id="insp-style-section" hidden>
-				<h3>Style</h3>
-				<div class="style-row">
+				<h3>Planet Render</h3>
+				<div class="style-field">
 					<label>Color</label>
 					<input id="insp-style-color" type="color" />
-					<button id="insp-style-color-reset">Reset</button>
 				</div>
-				<div class="style-row">
-					<label>Surface</label>
-					<select id="insp-style-surface">
-						<option value="">Default</option>
-						<option value="terran">Terran</option>
-						<option value="magma">Magma</option>
-						<option value="ice">Ice</option>
-						<option value="gas">Gas Giant</option>
-						<option value="crystalline">Crystalline</option>
-					</select>
-				</div>
-				<div class="style-row">
-					<label>Features</label>
-					<select id="insp-style-feature">
-						<option value="">None</option>
-						<option value="volcano">Volcano</option>
-						<option value="ring">Ring</option>
-						<option value="moon">Moon</option>
-					</select>
-				</div>
-				<div class="style-row">
+				<div class="style-field">
 					<label>Emissive</label>
 					<input id="insp-style-emissive" type="color" />
 				</div>
+				<div class="style-field">
+					<label>Canvas Script</label>
+					<textarea id="insp-style-script" rows="6" placeholder="function body: ctx, W, H, t, seed"></textarea>
+				</div>
+				<div class="style-field">
+					<label>HTML Overlay</label>
+					<textarea id="insp-style-html" rows="3" placeholder="HTML content"></textarea>
+				</div>
+				<div class="style-field">
+					<label>Overlay CSS</label>
+					<textarea id="insp-style-css" rows="3" placeholder="CSS rules"></textarea>
+				</div>
 				<div class="style-actions">
 					<button id="insp-style-apply">Apply</button>
-					<button id="insp-style-clear">Clear All</button>
+					<button id="insp-style-clear">Reset</button>
 				</div>
 				<div id="insp-style-status" class="chat-status"></div>
 			</div>

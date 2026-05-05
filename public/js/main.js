@@ -20,6 +20,7 @@ import { colorForType } from "./colors.js";
 	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
+	import { getRender, applyToMesh, updateOverlays } from "./planet-styles.js";
 // ── State ──────────────────────────────────────────────────────────
 
 let snapshot = null;
@@ -180,6 +181,14 @@ function setupThree() {
 	composer.addPass(bloom);
 
 	window.addEventListener("resize", onResize);
+	// Planet render changes from inspector — update mesh immediately
+	window.addEventListener("planet-render-changed", (e) => {
+		const node = cosmosCtx?.nodes?.get(e.detail.objectId);
+		if (node?.mesh) {
+			const render = getRender(e.detail.objectId);
+			applyToMesh(node.mesh, render);
+		}
+	});
 	canvas.addEventListener("pointermove", onPointerMove);
 	canvas.addEventListener("click", onClick);
 	canvas.addEventListener("dblclick", onDoubleClick);
@@ -1000,8 +1009,7 @@ function animate() {
 	const ray = cursorActive ? raycaster.ray : null;
 	// Cosmos: balls float gently and lean toward the cursor; tubes follow them.
 	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, ray);
-	// Agent: corona breathes, in-context blocks twinkle, blocks lean toward the cursor.
-
+	updateOverlays(camera, renderer);
 	if (!activeTween) {
 		// WASD pan: move camera + target in the horizontal plane.
 		const fwd = new THREE.Vector3();

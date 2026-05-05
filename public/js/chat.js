@@ -5,7 +5,7 @@
 	 * Position persists in localStorage per agent.
 	 */
 
-	import { parseStyleFromText, setStyle, applyStyle } from "./planet-styles.js";
+	import { parseRenderFromText, setRender, applyToMesh } from "./planet-styles.js";
 const DOCK = document.createElement("div");
 DOCK.id = "chat-dock";
 document.body.appendChild(DOCK);
@@ -206,13 +206,15 @@ class ChatWindow {
 			this.history.appendChild(msg);
 		}
 
-		// Check last assistant message for planet-style JSON
+		// Check last assistant message for planet render JSON
 		const lastAssistant = visible.filter((b) => b.kind === "assistant_text").pop();
 		if (lastAssistant?.text) {
-			const style = parseStyleFromText(lastAssistant.text);
-			if (style) {
-				setStyle(this.agentId, style);
-				this.status.textContent = "Planet style applied from agent response! Refresh to see changes.";
+			const render = parseRenderFromText(lastAssistant.text);
+			if (render) {
+				setRender(this.agentId, render);
+				// Try to apply immediately if mesh exists
+				window.dispatchEvent(new CustomEvent("planet-render-changed", { detail: { objectId: this.agentId } }));
+				this.status.textContent = "Planet render applied from agent response!";
 				this.status.className = "chat-status ok";
 			}
 		}

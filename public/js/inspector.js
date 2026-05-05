@@ -5,7 +5,7 @@
  */
 
 	import { colorForType } from "./colors.js";
-	import { getStyle, setStyle, clearStyle, applyStyle } from "./planet-styles.js";
+	import { getRender, setRender, clearRender } from "./planet-styles.js";
 
 	const els = {
 		empty: document.getElementById("inspector-empty"),
@@ -29,9 +29,10 @@
 		coinList: document.getElementById("insp-coin-list"),
 		styleSection: document.getElementById("insp-style-section"),
 		styleColor: document.getElementById("insp-style-color"),
-		styleSurface: document.getElementById("insp-style-surface"),
-		styleFeature: document.getElementById("insp-style-feature"),
 		styleEmissive: document.getElementById("insp-style-emissive"),
+		styleScript: document.getElementById("insp-style-script"),
+		styleHtml: document.getElementById("insp-style-html"),
+		styleCss: document.getElementById("insp-style-css"),
 		styleStatus: document.getElementById("insp-style-status"),
 		// Landing placeholder stats
 		stats: document.getElementById("stats"),
@@ -285,46 +286,46 @@ function render(detail, changesResponse) {
 
 	function renderStyleSection(objectId, defaultHex) {
 		els.styleSection.hidden = false;
-		const style = getStyle(objectId);
+		const render = getRender(objectId);
 
 		// Set current values
-		els.styleColor.value = style?.color ?? defaultHex;
-		els.styleSurface.value = style?.surfaceType ?? "";
-		els.styleFeature.value = style?.features?.[0]?.type ?? "";
-		els.styleEmissive.value = style?.emissive ?? "#000000";
-		els.styleStatus.textContent = style ? "Custom style active" : "Using defaults";
-		els.styleStatus.className = style ? "chat-status ok" : "chat-status";
+		els.styleColor.value = render?.color ?? defaultHex;
+		els.styleEmissive.value = render?.emissive ?? "#000000";
+		els.styleScript.value = render?.script ?? "";
+		els.styleHtml.value = render?.html ?? "";
+		els.styleCss.value = render?.css ?? "";
+		els.styleStatus.textContent = render ? "Custom render active" : "Using defaults";
+		els.styleStatus.className = render ? "chat-status ok" : "chat-status";
 
 		// Wire events once
 		if (!els.styleSection._wired) {
 			els.styleSection._wired = true;
 
 			document.getElementById("insp-style-apply").addEventListener("click", () => {
-				const newStyle = {
+				const newRender = {
 					color: els.styleColor.value,
-					surfaceType: els.styleSurface.value || undefined,
 					emissive: els.styleEmissive.value,
+					script: els.styleScript.value.trim() || undefined,
+					html: els.styleHtml.value.trim() || undefined,
+					css: els.styleCss.value.trim() || undefined,
 				};
-				if (els.styleFeature.value) {
-					newStyle.features = [{ type: els.styleFeature.value, scale: 1 }];
-				}
-				setStyle(objectId, newStyle);
-				els.styleStatus.textContent = "Style saved — refresh scene to see changes";
+				setRender(objectId, newRender);
+				els.styleStatus.textContent = "Render applied";
 				els.styleStatus.className = "chat-status ok";
+				// Notify main.js to update the mesh immediately
+				window.dispatchEvent(new CustomEvent("planet-render-changed", { detail: { objectId } }));
 			});
 
 			document.getElementById("insp-style-clear").addEventListener("click", () => {
-				clearStyle(objectId);
+				clearRender(objectId);
 				els.styleColor.value = defaultHex;
-				els.styleSurface.value = "";
-				els.styleFeature.value = "";
 				els.styleEmissive.value = "#000000";
-				els.styleStatus.textContent = "Style cleared — refresh scene to see defaults";
+				els.styleScript.value = "";
+				els.styleHtml.value = "";
+				els.styleCss.value = "";
+				els.styleStatus.textContent = "Render cleared";
 				els.styleStatus.className = "chat-status";
-			});
-
-			document.getElementById("insp-style-color-reset").addEventListener("click", () => {
-				els.styleColor.value = defaultHex;
+				window.dispatchEvent(new CustomEvent("planet-render-changed", { detail: { objectId } }));
 			});
 		}
 	}
