@@ -603,12 +603,9 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	overflow: hidden;
 	transition: max-height 200ms ease;
 }
-#livelog.collapsed { max-height: 32px; }
-#livelog.collapsed .livelog-list { display: none; }
-
-.livelog-header {
-	display: flex;
-	align-items: center;
+	.livelog-header {
+		display: flex;
+		align-items: center;
 	gap: 8px;
 	padding: 8px 12px;
 	cursor: pointer;

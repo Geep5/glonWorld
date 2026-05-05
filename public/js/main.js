@@ -631,6 +631,9 @@ function bindUI() {
 			const panelId = btn.dataset.panel;
 			const panel = document.getElementById(panelId);
 			if (!panel) return;
+			btn.addEventListener("pointerdown", (e) => {
+				e.stopPropagation(); // prevent panel drag from starting
+			});
 			btn.addEventListener("click", (e) => {
 				e.stopPropagation();
 				const collapsed = panel.classList.toggle("collapsed");
