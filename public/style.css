@@ -1002,6 +1002,8 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	.chat-body {
 		display: flex;
 		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 		gap: 6px;
 		padding: 8px;
 	}
