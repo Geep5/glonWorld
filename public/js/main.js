@@ -38,9 +38,13 @@ let contextAgentId = null;
 
 
 	// WASD / Space pan state
-	const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
+	const keys = { w: false, a: false, s: false, d: false, q: false, e: false, space: false, shift: false, ctrl: false };
 	const PAN_SPEED = 25; // world units per second
 
+	// Right-click mouselook state
+	let rightMouseDown = false;
+	let lastMX = 0, lastMY = 0;
+	const MOUSELOOK_SENS = 0.003;
 
 	// HUD grid dimensions (must match setupHudGrid call)
 	const GRID_COLS = 8;
@@ -153,6 +157,7 @@ function setupThree() {
 	controls.dampingFactor = 0.08;
 	controls.minDistance = 3;
 	controls.maxDistance = 100;
+	controls.addEventListener("start", () => { followId = null; });
 
 	// (Spatial reference is provided by a screen-space HUD grid in
 	// public/index.html, not a 3D helper \u2014 the HUD stays put while the
@@ -234,7 +239,31 @@ function setupThree() {
 	canvas.addEventListener("click", onClick);
 	canvas.addEventListener("dblclick", onDoubleClick);
 	canvas.addEventListener("pointerleave", () => { cursorActive = false; });
-
+	canvas.addEventListener("wheel", () => { followId = null; }, { passive: true });
+	canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+	canvas.addEventListener("pointerdown", (e) => {
+		if (e.button !== 2) return;
+		rightMouseDown = true;
+		lastMX = e.clientX;
+		lastMY = e.clientY;
+		controls.enabled = false;
+		canvas.setPointerCapture(e.pointerId);
+		e.preventDefault();
+	});
+	canvas.addEventListener("pointerup", (e) => {
+		if (e.button !== 2) return;
+		rightMouseDown = false;
+		canvas.releasePointerCapture(e.pointerId);
+		// Sync OrbitControls to current camera so it doesn't snap back
+		const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+		controls._spherical.setFromVector3(offset);
+		controls._spherical.makeSafe();
+		controls._sphericalDelta.set(0, 0, 0);
+		controls._panOffset.set(0, 0, 0);
+		controls._scale = 1;
+		controls.enabled = true;
+		controls.update();
+	});
 	// Label overlay — CSS-canvas on top of WebGL for sharp billboard text.
 	labelCanvas = document.createElement("canvas");
 	labelCanvas.style.position = "fixed";
@@ -246,33 +275,49 @@ function setupThree() {
 	onResize();
 }
 
-function buildScenes() {
-	cosmosCtx = buildCosmos(snapshot, materials);
-	scene.add(cosmosCtx.group);
+	function buildScenes() {
+		cosmosCtx = buildCosmos(snapshot, materials);
+		scene.add(cosmosCtx.group);
 
+		// Neon reference grid + upward ambient fill
+		const gridY = -12;
+		const grid = new THREE.GridHelper(200, 100, 0x5eead4, 0x0d2b28);
+		grid.position.y = gridY;
+		scene.add(grid);
 
+		// Upward-pointing neon lights to brighten the dark void
+		const gridLight = new THREE.PointLight(0x5eead4, 1.8, 160, 1.3);
+		gridLight.position.set(0, gridY, 0);
+		scene.add(gridLight);
 
-	// Build pickable list — we only want meshes the user interacts with.
-	refreshPickables();
+		const gridLight2 = new THREE.PointLight(0x2dd4bf, 0.9, 120, 1.4);
+		gridLight2.position.set(50, gridY + 4, 40);
+		scene.add(gridLight2);
 
-	// Legend ------------------------------------------------------
-	const legend = document.getElementById("legend-list");
-	legend.innerHTML = "";
-	const typeEntries = Object.entries(snapshot.byType).sort(([, a], [, b]) => b - a);
-	for (const [type, count] of typeEntries) {
-		const { hex } = colorForType(type);
-		const li = document.createElement("li");
-		li.className = "type-row";
-		li.dataset.type = type;
-		li.innerHTML = `<i style="background:${hex}"></i><span>${type}</span><span class="count">${count}</span>`;
-		li.addEventListener("click", () => toggleTypeMute(type, li));
-		legend.appendChild(li);
+		const gridLight3 = new THREE.PointLight(0x2dd4bf, 0.9, 120, 1.4);
+		gridLight3.position.set(-50, gridY + 4, -40);
+		scene.add(gridLight3);
+
+		// Build pickable list — we only want meshes the user interacts with.
+		refreshPickables();
+
+		// Legend ------------------------------------------------------
+		const legend = document.getElementById("legend-list");
+		legend.innerHTML = "";
+		const typeEntries = Object.entries(snapshot.byType).sort(([, a], [, b]) => b - a);
+		for (const [type, count] of typeEntries) {
+			const { hex } = colorForType(type);
+			const li = document.createElement("li");
+			li.className = "type-row";
+			li.dataset.type = type;
+			li.innerHTML = `<i style="background:${hex}"></i><span>${type}</span><span class="count">${count}</span>`;
+			li.addEventListener("click", () => toggleTypeMute(type, li));
+			legend.appendChild(li);
+		}
+		renderJobs(snapshot.objects);
+		renderCrypto(snapshot.objects);
+		startJobsRefresh();
 	}
-	renderJobs(snapshot.objects);
-	renderCrypto(snapshot.objects);
-	startJobsRefresh();
-}
-
 // Re-render the jobs panel from a fresh /api/state every JOBS_POLL_MS.
 // Each row shows context-window fill (the bar that drives compaction),
 // turn count, and a live/idle dot driven by lastActivity.
@@ -564,8 +609,16 @@ function bindUI() {
 		const tag = document.activeElement?.tagName;
 		if (tag === "INPUT" || tag === "TEXTAREA") return;
 		const k = e.key.toLowerCase();
-		if (k in keys) keys[k] = true;
-		if (e.code === "Space") keys.space = true;
+		if (k in keys) {
+			keys[k] = true;
+			followId = null;
+			e.preventDefault();
+		}
+		if (e.code === "Space") {
+			keys.space = true;
+			followId = null;
+			e.preventDefault();
+		}
 		if (e.key === "Shift") keys.shift = true;
 		if (e.key === "Control") keys.ctrl = true;
 	});
@@ -658,7 +711,9 @@ function bindUI() {
 
 
 	let activeTween = null;
+	let followId = null; // camera tracks this node until user manually moves
 	function tweenCamera(targetPos, targetLookAt) {
+		followId = null;
 		// Ghost camera: placed at the actual destination, looking at the target.
 		// This produces the correct quaternion for an offset birds-eye position.
 		const ghost = new THREE.PerspectiveCamera();
@@ -720,6 +775,29 @@ let cursorActive = false;
 		mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
 		mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 		cursorActive = e.target === renderer.domElement;
+
+		// Right-click mouselook: rotate camera
+		if (rightMouseDown) {
+			const dx = e.clientX - lastMX;
+			const dy = e.clientY - lastMY;
+			lastMX = e.clientX;
+			lastMY = e.clientY;
+
+			const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+			// Yaw around world Y
+			const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * MOUSELOOK_SENS);
+			offset.applyQuaternion(yawQ);
+			// Pitch around camera right axis
+			const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), offset).normalize();
+			if (right.lengthSq() > 0.001) {
+				const pitchQ = new THREE.Quaternion().setFromAxisAngle(right, -dy * MOUSELOOK_SENS);
+				offset.applyQuaternion(pitchQ);
+			}
+			camera.position.copy(controls.target).add(offset);
+			camera.lookAt(controls.target);
+			return; // skip raycaster/tooltips while dragging
+		}
+
 		raycaster.setFromCamera(mouse, camera);
 		const hits = raycaster.intersectObjects(visiblePickables(), false);
 		const first = hits[0]?.object;
@@ -768,12 +846,13 @@ function onDoubleClick(e) {
 	const first = hits[0]?.object;
 	if (!first) return;
 	const ud = first.userData;
-	if (ud.kind === "object") {
-		const target = first.position.clone();
-		const birdsEyePos = new THREE.Vector3(target.x + 4, target.y + 35, target.z + 4);
-		tweenCamera(birdsEyePos, target);
-		select(ud.id);
-	}
+		if (ud.kind === "object") {
+			const target = first.position.clone();
+			const birdsEyePos = new THREE.Vector3(target.x + 4, target.y + 35, target.z + 4);
+			tweenCamera(birdsEyePos, target);
+			select(ud.id);
+			followId = ud.id;
+		}
 }
 
 // ── Selection + highlighting ──────────────────────────────────────
@@ -1069,36 +1148,73 @@ function animate() {
 
 	if (activeTween) activeTween(now);
 
+	// Camera follow mode: track the selected node from birds-eye
+	if (followId && !activeTween && cosmosCtx?.nodes?.has(followId)) {
+		const node = cosmosCtx.nodes.get(followId);
+		if (node) {
+			controls.target.copy(node.mesh.position);
+			controls.update();
+		}
+	}
+
 	const t = now / 1000;
 	const ray = cursorActive ? raycaster.ray : null;
 	// Cosmos: balls float gently and lean toward the cursor; tubes follow them.
 	if (cosmosCtx?.tick && cosmosCtx.group.visible) cosmosCtx.tick(t, dt, ray);
 	updateOverlays(camera, renderer);
 	if (!activeTween) {
-		// WASD pan: move camera + target in the horizontal plane.
-		const fwd = new THREE.Vector3();
-		camera.getWorldDirection(fwd);
-		fwd.y = 0;
-		fwd.normalize();
-		const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
-		const pan = new THREE.Vector3();
-		if (keys.w) pan.add(fwd);
-		if (keys.s) pan.sub(fwd);
-		if (keys.d) pan.add(right);
-		if (keys.a) pan.sub(right);
-		if (pan.lengthSq() > 0) {
-			pan.normalize().multiplyScalar(PAN_SPEED * dt);
-			camera.position.add(pan);
-			controls.target.add(pan);
+		if (rightMouseDown) {
+			// Camera-relative WASD while in mouselook mode
+			const fwd = new THREE.Vector3();
+			camera.getWorldDirection(fwd);
+			const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+			const up = new THREE.Vector3(0, 1, 0);
+			const move = new THREE.Vector3();
+			if (keys.w) move.add(fwd);
+			if (keys.s) move.sub(fwd);
+			if (keys.d) move.add(right);
+			if (keys.a) move.sub(right);
+			if (keys.space) move.add(up);
+			if (keys.shift) move.sub(up);
+			if (move.lengthSq() > 0) {
+				move.normalize().multiplyScalar(PAN_SPEED * dt);
+				camera.position.add(move);
+				controls.target.add(move);
+			}
+		} else {
+			// WASD pan: move camera + target in the horizontal plane.
+			const fwd = new THREE.Vector3();
+			camera.getWorldDirection(fwd);
+			fwd.y = 0;
+			fwd.normalize();
+			const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+			const pan = new THREE.Vector3();
+			if (keys.w) pan.add(fwd);
+			if (keys.s) pan.sub(fwd);
+			if (keys.d) pan.add(right);
+			if (keys.a) pan.sub(right);
+			if (pan.lengthSq() > 0) {
+				pan.normalize().multiplyScalar(PAN_SPEED * dt);
+				camera.position.add(pan);
+				controls.target.add(pan);
+			}
+			// Space = fly up, Shift+Space = fly down
+			if (keys.space) {
+				const up = keys.shift ? -1 : 1;
+				const v = PAN_SPEED * dt * up;
+				camera.position.y += v;
+				controls.target.y += v;
+			}
+			// Q/E orbit around target
+			if (keys.q || keys.e) {
+				const angle = (keys.q ? -1 : 1) * 2.0 * dt;
+				const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+				const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+				offset.applyQuaternion(q);
+				camera.position.copy(controls.target).add(offset);
+			}
+			controls.update();
 		}
-		// Space = fly up, Shift+Space = fly down
-		if (keys.space) {
-			const up = keys.shift ? -1 : 1;
-			const v = PAN_SPEED * dt * up;
-			camera.position.y += v;
-			controls.target.y += v;
-		}
-		controls.update();
 	}
 	composer.render();
 	drawLabels();
@@ -1267,6 +1383,21 @@ const draggablePanels = new Set();
 		};
 		target.addEventListener("pointerup", finish);
 		target.addEventListener("pointercancel", finish);
+		target.addEventListener("dblclick", (e) => {
+			if (!handleSelector) {
+				const rect = panel.getBoundingClientRect();
+				const localY = e.clientY - rect.top;
+				if (localY > 36) return;
+			}
+			if (e.target.closest("button")) return;
+			const collapsed = panel.classList.toggle("collapsed");
+			const btn = panel.querySelector(".panel-collapse");
+			if (btn) {
+				btn.textContent = collapsed ? "▲" : "─";
+				btn.title = collapsed ? "Expand" : "Collapse";
+			}
+			e.preventDefault();
+		});
 	}
 
 function applyAbsolutePosition(panel, left, top) {

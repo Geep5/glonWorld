@@ -75,6 +75,10 @@
 
 	<aside id="inspector">
 		<button class="panel-collapse" data-panel="inspector" title="Collapse">─</button>
+		<div class="inspector-collapsed-summary" id="inspector-summary">
+			<span class="type-badge" id="inspector-summary-badge" style="display:none"></span>
+			<span id="inspector-summary-title" class="inspector-summary-title">Inspector</span>
+		</div>
 		<div id="inspector-empty" class="inspector-empty">
 			<h2>Select an object</h2>
 			<p>Click any ball to inspect it. The glowing ball is the agent. Activity heat lights up balls touched by recent changes.</p>
@@ -130,7 +134,7 @@
 					<div class="forge-history" id="insp-forge-history"></div>
 					<div class="forge-status" id="insp-forge-status"></div>
 					<div class="forge-inputrow">
-						<input type="text" id="insp-forge-input" placeholder="Describe your planet..." />
+						<input type="text" id="insp-forge-input" placeholder="Describe customization..." />
 						<button id="insp-forge-send">Send</button>
 						<button id="insp-forge-apply" disabled>Apply</button>
 						<button id="insp-forge-reset">Reset</button>

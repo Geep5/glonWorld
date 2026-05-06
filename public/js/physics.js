@@ -32,8 +32,13 @@ export function isReady() {
 	return initialized;
 }
 
-export function step(dt) {
-	if (!world) return;
-	world.timestep = dt;
-	world.step();
-}
+	export function step(dt) {
+		if (!world) return;
+		if (!Number.isFinite(dt) || dt <= 0) return;
+		world.timestep = Math.min(dt, 1 / 30);
+		try {
+			world.step();
+		} catch (err) {
+			console.error("Physics step failed (Rapier panic); skipping frame:", err);
+		}
+	}

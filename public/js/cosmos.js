@@ -21,7 +21,7 @@
 	import * as THREE from "three";
 	import { colorForType } from "./colors.js";
 	import { applyStoredStyle } from "./planet-styles.js";
-	import { getWorld, getRapier, step as stepPhysics } from "./physics.js";
+	import { getWorld, getRapier, step } from "./physics.js";
 
 // \u2500\u2500 Procedural planet textures \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 //
@@ -115,30 +115,31 @@ function shadeRgb({ r, g, b }, k) {
 
 // radius, y-offset, node scale, importance (bigger = featured)
 const TYPE_LAYOUT = {
-	agent:      { radius: 0,  y: 0,    scale: 2.4, featured: true },
-	peer:       { radius: 5,  y: 0.5,  scale: 1.0 },
-	chat:       { radius: 7, y: -0.5, scale: 0.8 },
-	ttt:        { radius: 8, y: 0.8,  scale: 0.7 },
-	account:    { radius: 9, y: -0.8, scale: 0.7 },
-	pinned_fact: { radius: 10, y: -1.0, scale: 0.65 },
-	reminder:    { radius: 11, y: 0.6,  scale: 0.65 },
-	type:        { radius: 12, y: -0.3, scale: 0.65 },
-	milestone:   { radius: 13, y: 1.0,  scale: 0.7 },
-	"chain.token": { radius: 14, y: 0.5, scale: 0.9 },
-	"chain.coin.bucket": { radius: 15, y: 0.3, scale: 0.9 },
-	"chain.coin.offer": { radius: 16, y: -0.3, scale: 0.9 },
-	program:    { radius: 22, y: 1.5,  scale: 0.5 },
-	typescript: { radius: 28, y: 0,    scale: 0.45 },
-	javascript: { radius: 30, y: 0,    scale: 0.45 },
-	json:       { radius: 32, y: -2.0, scale: 0.45 },
-	source:     { radius: 34, y: 0,    scale: 0.45 },
-	proto:      { radius: 36, y: 2.0,  scale: 0.45 },
-	"chain.anchor": { radius: 55, y: 0, scale: 0.3 },
-	unknown:    { radius: 60, y: 0,    scale: 0.3 },
+	agent:      { radius: 0,  y: 0,    scale: 2.2, featured: true },
+	trading_agent: { radius: 3, y: 0, scale: 0.9, featured: false },
+	peer:       { radius: 4.5,  y: 0.5,  scale: 0.9 },
+	chat:       { radius: 6, y: -0.5, scale: 0.75 },
+	ttt:        { radius: 7.5, y: 0.8,  scale: 0.65 },
+	account:    { radius: 9, y: -0.8, scale: 0.65 },
+	pinned_fact: { radius: 10.5, y: -1.0, scale: 0.6 },
+	reminder:    { radius: 12, y: 0.6,  scale: 0.6 },
+	type:        { radius: 13.5, y: -0.3, scale: 0.6 },
+	milestone:   { radius: 15, y: 1.0,  scale: 0.65 },
+	"chain.token": { radius: 16.5, y: 0.5, scale: 0.8 },
+	"chain.coin.bucket": { radius: 18, y: 0.3, scale: 0.8 },
+	"chain.coin.offer": { radius: 19.5, y: -0.3, scale: 0.8 },
+	program:    { radius: 22, y: 1.5,  scale: 0.45 },
+	typescript: { radius: 24.5, y: 0,    scale: 0.4 },
+	javascript: { radius: 26.5, y: 0,    scale: 0.4 },
+	json:       { radius: 28.5, y: -2.0, scale: 0.4 },
+	source:     { radius: 30.5, y: 0,    scale: 0.4 },
+	proto:      { radius: 32.5, y: 2.0,  scale: 0.4 },
+	"chain.anchor": { radius: 36, y: 0, scale: 0.25 },
+	unknown:    { radius: 40, y: 0,    scale: 0.25 },
 };
 
 function layoutForType(typeKey) {
-	return TYPE_LAYOUT[typeKey] ?? { radius: 60, y: 0, scale: 0.3 };
+	return TYPE_LAYOUT[typeKey] ?? { radius: 40, y: 0, scale: 0.25 };
 }
 
 // Deterministic angle permutation so items of the same type don't
@@ -186,14 +187,20 @@ function floatFreq(id, axis) {
 	return lo + hash01(id + "f" + axis) * (hi - lo);
 }
 
-// Cursor-as-magnet tunables. The cursor's world ray pulls nearby balls
-// toward it so small targets are easier to click. Pull strength falls
-// off linearly to zero at MAGNET_RADIUS so distant balls stay put.
-const MAGNET_RADIUS = 2.5;
-const MAGNET_PULL   = 0.55;
-const MAGNET_LERP   = 0.20;
-const SNAP_RADIUS   = 0.8;    // within this distance, ball snaps to cursor
+	// Snap-magnet tunables
+	const SNAP_RADIUS = 5.0;      // cursor-ray distance to snap a node
+	const SNAP_SPRING_K = 28.0;   // how hard snapped nodes are pulled toward cursor
+	const SNAP_DAMP = 1.0;        // low damping so they feel responsive
 
+	// Selected-node repulsion: nearby balls are gently pushed away so they
+	// don't visually pass through the selected node.
+	const REPEL_RADIUS   = 8;
+	const REPEL_STRENGTH = 4.0;
+
+	// Orbit-spring tunables: how strongly bodies are pulled toward their
+	// orbital target and how much velocity damping keeps them from oscillating.
+	const ORBIT_SPRING_K = 10.0;
+	const ORBIT_DAMP_K   = 3.5;
 // Heat tunables: how fast a touched ball cools, how strongly heat shows.
 // HEAT_TAU_MS is the e-folding time: a ball touched 30s ago is at ~37%.
 const HEAT_TAU_MS         = 30_000;
@@ -295,6 +302,7 @@ export function buildCosmos(state, materials) {
 	const spawnDepthOf = (obj) => Number(obj.scalars?.spawn_depth ?? 0);
 
 	const positions = new Map(); // id → THREE.Vector3
+	const homePositions = new Map(); // id → THREE.Vector3 (frozen after placement)
 	const nodes = new Map();     // id → { mesh, ring, halo? }
 
 	const visuals = new Map();   // id → visual state (lastSeen, baseEmissive, etc.)
@@ -324,11 +332,12 @@ export function buildCosmos(state, materials) {
 			let pos;
 			let placementScale = 1.0;
 			let isFeatured = !!featured;
+			let orbitCenterY = 0, orbitYOffset = 0, orbitRadius = 0, orbitAngle = 0, parentId = null;
 			if (orbitParentOf.has(obj.id) && positions.has(orbitParentOf.get(obj.id))) {
 				// Satellite: orbit around the parent. Multiple siblings fan
 				// around the parent on a deterministic ring (XZ plane), each
 				// level out adds a touch of radius so deeper chains don't pile.
-				const parentId = orbitParentOf.get(obj.id);
+				parentId = orbitParentOf.get(obj.id);
 				const parentPos = positions.get(parentId);
 				const siblings = orbitChildren.get(parentId) ?? [];
 				const sIdx = siblings.indexOf(obj.id);
@@ -336,7 +345,10 @@ export function buildCosmos(state, materials) {
 				const depth = (isAgentType ? Math.max(1, spawnDepthOf(obj)) : 1);
 				const parentOrbit = visuals.get(parentId);
 				const parentHaloR = parentOrbit?.haloScale ?? 4;
-				const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
+				const orbitR = Math.max(
+					parentHaloR + 1.5 + (depth - 1) * 1.5,
+					sCount * 0.45,
+				);
 				const theta = angleFor(sIdx, sCount, "sub" + parentId);
 				pos = new THREE.Vector3(
 					parentPos.x + Math.cos(theta) * orbitR,
@@ -345,6 +357,9 @@ export function buildCosmos(state, materials) {
 				);
 				placementScale = 0.45;          // moon-sized next to the parent star
 				isFeatured = false;             // planet-style (low emissive, no big halo)
+				orbitRadius = orbitR;
+				orbitAngle = theta;
+				orbitYOffset = jitterY(obj.id) * 0.4;
 			} else {
 				// Primary placement on the type's ring. For 'agent' this is r=0
 				// unless multiple primaries exist, in which case spread them on a
@@ -353,7 +368,9 @@ export function buildCosmos(state, materials) {
 					? sorted.filter((o) => !orbitParentOf.has(o.id)).findIndex((o) => o.id === obj.id)
 					: i;
 				const ringCount = isAgentType ? primaryCount : sorted.length;
-				const ringRadius = isAgentType && primaryCount > 1 ? 2 : radius;
+			const ringRadius = typeKey === "agent" && primaryCount > 1
+				? 2
+				: Math.max(radius, ringCount * 0.35);
 				const theta0 = angleFor(primaryIdx, ringCount, typeKey);
 				const yJitter = jitterY(obj.id);
 				const baseY = y + yJitter;
@@ -362,6 +379,10 @@ export function buildCosmos(state, materials) {
 					baseY,
 					Math.sin(theta0) * jitterR(obj.id, ringRadius),
 				);
+				orbitRadius = ringRadius;
+				orbitAngle = theta0;
+				orbitCenterY = baseY;
+				parentId = null;
 			}
 			// Log-scaled size by change count (floor at 0.5, gentler growth).
 			const changeScale = Math.max(0.5, Math.min(1.6, Math.log10(1 + obj.changeCount) * 0.5 + 0.6));
@@ -416,7 +437,8 @@ export function buildCosmos(state, materials) {
 			// Rapier rigid body + collider
 			const RAPIER = getRapier();
 			const world = getWorld();
-			const bodyDesc = isFeatured
+			const isKinematic = isFeatured;
+			const bodyDesc = isKinematic
 				? RAPIER.RigidBodyDesc.kinematicPositionBased()
 					.setTranslation(pos.x, pos.y, pos.z)
 				: RAPIER.RigidBodyDesc.dynamic()
@@ -432,7 +454,7 @@ export function buildCosmos(state, materials) {
 			world.createCollider(colliderDesc, body);
 
 			positions.set(obj.id, pos);
-			nodes.set(obj.id, { mesh, halo, haloMat, body });
+			nodes.set(obj.id, { mesh, halo, haloMat, body, isKinematic });
 			visuals.set(obj.id, {
 				ampX: floatAmp(obj.id, "x") * floatScale,
 				ampY: floatAmp(obj.id, "y") * floatScale,
@@ -455,6 +477,12 @@ export function buildCosmos(state, materials) {
 				tilt: (hash01(obj.id + "tl") - 0.5) * 0.6,
 				haloColor: color.clone(),
 				contextActive: false,
+				orbitCenterY,
+				orbitYOffset,
+				orbitRadius,
+				orbitAngle,
+				orbitSpeed: typeKey === "chain.anchor" ? 0 : 0.025,
+				parentId,
 			});
 		}
 	}
@@ -471,7 +499,10 @@ export function buildCosmos(state, materials) {
 		const depth = 1;
 		const parentOrbit = visuals.get(parentId);
 		const parentHaloR = parentOrbit?.haloScale ?? 4;
-		const orbitR = parentHaloR + 1.5 + (depth - 1) * 1.5;
+		const orbitR = Math.max(
+			parentHaloR + 1.5 + (depth - 1) * 1.5,
+			sCount * 0.45,
+		);
 		const theta = angleFor(sIdx, sCount, "sub" + parentId);
 		const newPos = new THREE.Vector3(
 			parentPos.x + Math.cos(theta) * orbitR,
@@ -480,10 +511,17 @@ export function buildCosmos(state, materials) {
 		);
 		node.mesh.position.copy(newPos);
 		node.halo.position.copy(newPos);
-			positions.get(childId).copy(newPos);
-			node.body.setTranslation({ x: newPos.x, y: newPos.y, z: newPos.z }, true);
+		positions.get(childId).copy(newPos);
+		node.body.setTranslation({ x: newPos.x, y: newPos.y, z: newPos.z }, true);
+		const v = visuals.get(childId);
+		v.parentId = parentId;
+		v.orbitRadius = orbitR;
+		v.orbitAngle = theta;
+		v.orbitYOffset = jitterY(childId) * 0.4;
+		v.orbitCenterY = 0;
 
-	// Anchor chain: arrange anchors in a 3D helix.
+	}
+	// Anchor chain: arrange anchors in a flat outward ring.
 	const anchors = state.objects.filter((o) => o.typeKey === "chain.anchor");
 	const anchorChain = [];
 	if (anchors.length > 1) {
@@ -513,18 +551,16 @@ export function buildCosmos(state, materials) {
 		}
 
 		if (anchorChain.length > 1) {
-			const R0 = 15;
-			const DR = 0.02;
-			const DTHETA = 0.02;
-			const DY = 0.03;
-			const Y0 = -25;
+			const R0 = 28;
+			const DR = 0.03;
+			const DTHETA = 0.02; // ~1.1° per step → very tight
 			for (let i = 0; i < anchorChain.length; i++) {
 				const obj = anchorChain[i];
 				const node = nodes.get(obj.id);
 				if (!node) continue;
-				const theta = i * DTHETA;
+				const theta = i * DTHETA + 0.3;
 				const r = R0 + i * DR;
-				const y = i * DY + Y0;
+				const y = jitterY(obj.id) * 0.08;
 				const pos = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r);
 				positions.get(obj.id).copy(pos);
 				node.mesh.position.copy(pos);
@@ -533,6 +569,7 @@ export function buildCosmos(state, materials) {
 				// Head anchor (newest) gets a size + glow boost so the chain tip is obvious.
 				if (i === anchorChain.length - 1) {
 					node.mesh.scale.multiplyScalar(1.6);
+					visuals.get(obj.id).baseRadius *= 1.6;
 					if (node.mesh.material.emissiveIntensity !== undefined) {
 						node.mesh.material.emissiveIntensity = 0.8;
 					}
@@ -646,7 +683,7 @@ export function buildCosmos(state, materials) {
 		o.lastSeen = ts ?? Date.now();
 		// Small outward "pop" impulse
 		const body = node.body;
-		if (body.bodyType() !== getRapier().RigidBodyType.KinematicPositionBased) {
+		if (!node.isKinematic) {
 			const mass = body.mass();
 			body.applyImpulse({
 				x: (Math.random() - 0.5) * 0.01 * mass,
@@ -682,34 +719,48 @@ export function buildCosmos(state, materials) {
 			selectLight.intensity = 0;
 		}
 	}
+	function applyOrbitBase(out, id, o, elapsedSec) {
+		if (o.orbitSpeed !== 0 && o.orbitRadius > 0) {
+			if (o.parentId && positions.has(o.parentId)) {
+				const pp = positions.get(o.parentId);
+				const angle = o.orbitAngle + elapsedSec * o.orbitSpeed;
+				out.x = pp.x + Math.cos(angle) * o.orbitRadius;
+				out.y = pp.y + (o.orbitYOffset || 0);
+				out.z = pp.z + Math.sin(angle) * o.orbitRadius;
+				return;
+			}
+			const angle = o.orbitAngle + elapsedSec * o.orbitSpeed;
+			out.x = Math.cos(angle) * o.orbitRadius;
+			out.y = o.orbitCenterY;
+			out.z = Math.sin(angle) * o.orbitRadius;
+			return;
+		}
+		const home = homePositions.get(id);
+		out.x = home.x; out.y = home.y; out.z = home.z;
+	}
 
 	function tick(elapsedSec, dt, cursorRay) {
 		const now = Date.now();
 
-		// ── Phase 1: apply float forces ──────────────────────────────
-		for (const [id, o] of visuals) {
-			const node = nodes.get(id);
-			if (!node) continue;
-			const body = node.body;
-			if (body.bodyType() === getRapier().RigidBodyType.KinematicPositionBased) continue;
-
-			const fx = Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX * 0.5;
-			const fy = Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY * 0.5;
-			const fz = Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ * 0.5;
-			body.applyForce({ x: fx, y: fy, z: fz }, true);
+		// Pre-sync positions from physics bodies for orbit math
+		for (const [id, node] of nodes) {
+			const p = node.body.translation();
+			positions.get(id).set(p.x, p.y, p.z);
 		}
 
-		// ── Phase 2: cursor magnet impulses ──────────────────────────
+		// ── Phase 1: find snapped ball (closest to cursor ray) ───────
+		let snappedId = null;
+		let snapClosest = null;
+		let snapMinD = Infinity;
 		if (cursorRay) {
-			let snappedId = null;
-			let snapClosest = null;
-			let snapMinD = Infinity;
 			for (const [id, o] of visuals) {
 				if (!o.canMagnet) continue;
+				if (id === selectedId) continue;
 				const node = nodes.get(id);
 				if (!node || !node.mesh.visible) continue;
-				const t = node.body.translation();
-				tmpBase.set(t.x, t.y, t.z);
+				// Use actual body position for accurate snap detection
+				const p = node.body.translation();
+				tmpBase.set(p.x, p.y, p.z);
 				cursorRay.closestPointToPoint(tmpBase, tmpClosest);
 				const d = tmpBase.distanceTo(tmpClosest);
 				if (d < snapMinD) {
@@ -719,49 +770,144 @@ export function buildCosmos(state, materials) {
 				}
 			}
 			if (snapMinD > SNAP_RADIUS) snappedId = null;
+		}
 
-			for (const [id, o] of visuals) {
-				if (!o.canMagnet) continue;
-				const node = nodes.get(id);
-				if (!node || !node.mesh.visible) continue;
-				const body = node.body;
-				if (body.bodyType() === getRapier().RigidBodyType.KinematicPositionBased) continue;
-
-				const t = body.translation();
-				let ix = 0, iy = 0, iz = 0;
-				if (id === snappedId && snapClosest) {
-					const k = MAGNET_PULL * body.mass();
-					ix = (snapClosest.x - t.x) * k;
-					iy = (snapClosest.y - t.y) * k;
-					iz = (snapClosest.z - t.z) * k;
-				} else if (!snappedId) {
-					tmpBase.set(t.x, t.y, t.z);
-					cursorRay.closestPointToPoint(tmpBase, tmpClosest);
-					const d = tmpBase.distanceTo(tmpClosest);
-					if (d < MAGNET_RADIUS) {
-						const k = MAGNET_PULL * (1 - d / MAGNET_RADIUS) * body.mass();
-						ix = (tmpClosest.x - t.x) * k;
-						iy = (tmpClosest.y - t.y) * k;
-						iz = (tmpClosest.z - t.z) * k;
-					}
-				}
-				if (ix !== 0 || iy !== 0 || iz !== 0) {
-					body.applyImpulse({ x: ix * dt, y: iy * dt, z: iz * dt }, true);
-				}
+		// Compute selected node's actual position for repulsion
+		let selBaseX = 0, selBaseY = 0, selBaseZ = 0;
+		if (selectedId) {
+			const selNode = nodes.get(selectedId);
+			if (selNode) {
+				const p = selNode.body.translation();
+				selBaseX = p.x;
+				selBaseY = p.y;
+				selBaseZ = p.z;
 			}
 		}
 
-		// ── Phase 3: step physics ────────────────────────────────────
-		stepPhysics(dt);
+		// ── Phase 2: apply physics impulses ──────────────────────────
+		for (const [id, o] of visuals) {
+			const node = nodes.get(id);
+			if (!node || node.isKinematic) continue;
 
-		// ── Phase 4: sync meshes + visual effects ────────────────────
+			// Orbit target
+			let targetX, targetY, targetZ;
+			if (id === snappedId && snapClosest) {
+				// Compute orbit base so we can leash the snap
+				applyOrbitBase(tmpBase, id, o, elapsedSec);
+				const fx = Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
+				const fy = Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
+				const fz = Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
+				const orbitX = tmpBase.x + fx;
+				const orbitY = tmpBase.y + fy;
+				const orbitZ = tmpBase.z + fz;
+				// Leash: snapped target is clamped to 4 units from orbit base
+				const ldx = snapClosest.x - orbitX;
+				const ldy = snapClosest.y - orbitY;
+				const ldz = snapClosest.z - orbitZ;
+				const ld = Math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
+				const MAX_SNAP_DISPLACEMENT = 4.0;
+				if (ld > MAX_SNAP_DISPLACEMENT) {
+					const s = MAX_SNAP_DISPLACEMENT / ld;
+					targetX = orbitX + ldx * s;
+					targetY = orbitY + ldy * s;
+					targetZ = orbitZ + ldz * s;
+				} else {
+					targetX = snapClosest.x;
+					targetY = snapClosest.y;
+					targetZ = snapClosest.z;
+				}
+			} else {
+				applyOrbitBase(tmpBase, id, o, elapsedSec);
+				const fx = Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
+				const fy = Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
+				const fz = Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
+				targetX = tmpBase.x + fx;
+				targetY = tmpBase.y + fy;
+				targetZ = tmpBase.z + fz;
+			}
+			const body = node.body;
+			const pos = body.translation();
+			const vel = body.linvel();
+			const mass = body.mass();
+
+			// Spring toward target (orbit or cursor)
+			const springK = (id === snappedId) ? SNAP_SPRING_K : ORBIT_SPRING_K;
+			let ix = springK * (targetX - pos.x) * mass * dt;
+			let iy = springK * (targetY - pos.y) * mass * dt;
+			let iz = springK * (targetZ - pos.z) * mass * dt;
+
+			// Velocity damping (lighter for snapped nodes so they feel responsive)
+			const damp = (id === snappedId) ? SNAP_DAMP : ORBIT_DAMP_K;
+			ix -= damp * vel.x * mass * dt;
+			iy -= damp * vel.y * mass * dt;
+			iz -= damp * vel.z * mass * dt;
+
+			// No nearby gentle pull — only the snapped node reacts to cursor
+
+			// Selected-node repulsion
+			if (selectedId && id !== selectedId) {
+				const rdx = pos.x - selBaseX;
+				const rdy = pos.y - selBaseY;
+				const rdz = pos.z - selBaseZ;
+				const rd = Math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
+				if (rd < REPEL_RADIUS && rd > 0.001) {
+					const strength = REPEL_STRENGTH * (1 - rd / REPEL_RADIUS);
+					ix += (rdx / rd) * strength * mass * dt;
+					iy += (rdy / rd) * strength * mass * dt;
+					iz += (rdz / rd) * strength * mass * dt;
+				}
+			}
+
+			body.applyImpulse({ x: ix, y: iy, z: iz }, true);
+		}
+
+		// Step physics
+		step(dt);
+
+		// ── Phase 3: sync meshes + visual effects from physics ───────
 		for (const [id, o] of visuals) {
 			const node = nodes.get(id);
 			if (!node) continue;
-			const t = node.body.translation();
-			node.mesh.position.set(t.x, t.y, t.z);
-			node.halo.position.set(t.x, t.y, t.z);
-			positions.get(id).set(t.x, t.y, t.z);
+
+			let px, py, pz;
+			if (node.isKinematic) {
+				applyOrbitBase(tmpBase, id, o, elapsedSec);
+				const kfx = Math.sin(elapsedSec * o.freqX + o.phaseX) * o.ampX;
+				const kfy = Math.sin(elapsedSec * o.freqY + o.phaseY) * o.ampY;
+				const kfz = Math.sin(elapsedSec * o.freqZ + o.phaseZ) * o.ampZ;
+				const orbitX = tmpBase.x + kfx;
+				const orbitY = tmpBase.y + kfy;
+				const orbitZ = tmpBase.z + kfz;
+				if (id === snappedId && snapClosest) {
+					// Leash: clamp cursor target to 4 units from orbit base
+					const ldx = snapClosest.x - orbitX;
+					const ldy = snapClosest.y - orbitY;
+					const ldz = snapClosest.z - orbitZ;
+					const ld = Math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
+					const MAX_SNAP_DISPLACEMENT = 4.0;
+					if (ld > MAX_SNAP_DISPLACEMENT) {
+						const s = MAX_SNAP_DISPLACEMENT / ld;
+						px = orbitX + ldx * s;
+						py = orbitY + ldy * s;
+						pz = orbitZ + ldz * s;
+					} else {
+						px = snapClosest.x;
+						py = snapClosest.y;
+						pz = snapClosest.z;
+					}
+				} else {
+					px = orbitX;
+					py = orbitY;
+					pz = orbitZ;
+				}
+				node.body.setTranslation({ x: px, y: py, z: pz }, true);
+			} else {
+				const p = node.body.translation();
+				px = p.x; py = p.y; pz = p.z;
+			}
+			node.mesh.position.set(px, py, pz);
+			node.halo.position.set(px, py, pz);
+			positions.get(id).set(px, py, pz);
 
 			node.mesh.rotation.set(o.tilt, elapsedSec * o.spinRate + o.spinPhase, 0);
 
@@ -788,15 +934,16 @@ export function buildCosmos(state, materials) {
 		}
 
 		// Selection follow-light
-		if (selectedId) {
-			const selPos = positions.get(selectedId);
-			if (selPos && selPos.distanceToSquared(_lastLightPos) > 0.0025) {
-				selectLight.position.copy(selPos);
-				_lastLightPos.copy(selPos);
-			}
+		const selNode = selectedId ? nodes.get(selectedId) : null;
+		if (selNode) {
+			selectLight.position.copy(selNode.mesh.position);
+			selectLight.intensity += (2.2 - selectLight.intensity) * 0.12;
+			selectLight.distance += (35 - selectLight.distance) * 0.12;
+		} else {
+			selectLight.intensity += (0 - selectLight.intensity) * 0.08;
 		}
 
-		// Link tubes
+		// Update link tubes so they track displaced ball positions
 		for (const m of linkMeshes) {
 			if (m.userData.update) {
 				m.userData.update();
@@ -821,7 +968,11 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
+	// Freeze current placement as home positions so physics drift can be
+	// corrected by a restoring spring in tick().
+	for (const [id, pos] of positions) {
+		homePositions.set(id, pos.clone());
+	}
 	return { group, nodes, positions, linkMeshes, tick, bumpHeat, setContextActive, setSelected };
-}
 }
 

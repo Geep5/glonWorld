@@ -138,6 +138,11 @@ class ChatWindow {
 		};
 		handle.addEventListener("pointerup", end);
 		handle.addEventListener("pointercancel", end);
+		handle.addEventListener("dblclick", (e) => {
+			if (e.target.closest("button")) return;
+			this.toggleMinimize();
+			e.preventDefault();
+		});
 	}
 
 	makeResizable(handle) {
