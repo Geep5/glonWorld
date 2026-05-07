@@ -35,10 +35,19 @@ export function isReady() {
 	export function step(dt) {
 		if (!world) return;
 		if (!Number.isFinite(dt) || dt <= 0) return;
-		world.timestep = Math.min(dt, 1 / 30);
-		try {
-			world.step();
-		} catch (err) {
-			console.error("Physics step failed (Rapier panic); skipping frame:", err);
+		// Fixed timestep for solver stability; substep if dt spikes.
+		const STEP = 1 / 60;
+		const maxSteps = 3;
+		let acc = Math.min(dt, STEP * maxSteps);
+		while (acc > 0) {
+			const s = Math.min(acc, STEP);
+			world.timestep = s;
+			try {
+				world.step();
+			} catch (err) {
+				console.error("Physics step failed (Rapier panic); skipping frame:", err);
+				break;
+			}
+			acc -= s;
 		}
 	}

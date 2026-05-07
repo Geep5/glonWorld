@@ -613,17 +613,18 @@ export function buildCosmos(state, materials) {
 		}
 	}
 
-	// Links --------------------------------------------------------
+	// Links — updatable line geometry instead of per-frame TubeGeometry recreation
 	const linkMeshes = [];
 	const LINK_STYLE = {
-		spawn_parent:  { color: "#ffc857", opacity: 0.85, width: 0.075 },
-		owner:         { color: "#60a5fa", opacity: 0.7,  width: 0.05 },
-		token:         { color: "#4ade80", opacity: 0.7,  width: 0.05 },
-		principal:     { color: "#f472b6", opacity: 0.6,  width: 0.04 },
-		target:        { color: "#a78bfa", opacity: 0.5,  width: 0.035 },
-		context_source:{ color: "#94a3b8", opacity: 0.4,  width: 0.03 },
+		spawn_parent:  { color: "#ffc857", opacity: 0.85, width: 2 },
+		owner:         { color: "#60a5fa", opacity: 0.7,  width: 2 },
+		token:         { color: "#4ade80", opacity: 0.7,  width: 2 },
+		principal:     { color: "#f472b6", opacity: 0.6,  width: 1.5 },
+		target:        { color: "#a78bfa", opacity: 0.5,  width: 1.5 },
+		context_source:{ color: "#94a3b8", opacity: 0.4,  width: 1 },
 	};
-	const DEFAULT_LINK_STYLE = { color: "#5eead4", opacity: 0.5, width: 0.035 };
+	const DEFAULT_LINK_STYLE = { color: "#5eead4", opacity: 0.5, width: 1 };
+	const LINK_SEGMENTS = 32;
 	for (const link of state.links) {
 		const a = positions.get(link.sourceId);
 		const b = positions.get(link.targetId);
@@ -632,20 +633,19 @@ export function buildCosmos(state, materials) {
 		const style = LINK_STYLE[link.relationKey] ?? DEFAULT_LINK_STYLE;
 		const isLineage = link.relationKey === "spawn_parent";
 
-		const mid = a.clone().add(b).multiplyScalar(0.5);
-		const lift = Math.max(1, a.distanceTo(b) * (isLineage ? 0.32 : 0.2));
-		const outward = mid.clone().normalize().multiplyScalar(lift * 0.3);
-		mid.add(new THREE.Vector3(0, lift, 0)).add(outward);
+		// Pre-allocate buffer geometry with curve points
+		const posArray = new Float32Array((LINK_SEGMENTS + 1) * 3);
+		const geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(posArray, 3));
 
-		const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-		const geom = new THREE.TubeGeometry(curve, 48, style.width, 6, false);
-		const mat = new THREE.MeshBasicMaterial({
+		const mat = new THREE.LineBasicMaterial({
 			color: new THREE.Color(style.color),
 			transparent: true,
 			opacity: style.opacity,
+			linewidth: style.width, // note: WebGL line width is limited
 		});
-		const mesh = new THREE.Mesh(geom, mat);
-		mesh.userData = { kind: "link", link, isLineage, linkWidth: style.width };
+		const mesh = new THREE.Line(geometry, mat);
+		mesh.userData = { kind: "link", link, isLineage, a: a.clone(), b: b.clone(), mid: new THREE.Vector3() };
 		group.add(mesh);
 		linkMeshes.push(mesh);
 	}
@@ -978,7 +978,7 @@ export function buildCosmos(state, materials) {
 			selectLight.intensity += (0 - selectLight.intensity) * 0.08;
 		}
 
-		// Update link tubes so they track displaced ball positions
+		// Update link curves so they track displaced ball positions
 		for (const m of linkMeshes) {
 			if (m.userData.update) {
 				m.userData.update();
@@ -988,6 +988,8 @@ export function buildCosmos(state, materials) {
 			const a = positions.get(link.sourceId);
 			const b = positions.get(link.targetId);
 			if (!a || !b) continue;
+
+			// Compute control points for quadratic bezier
 			tmpA.copy(a); tmpB.copy(b);
 			tmpMid.copy(tmpA).add(tmpB).multiplyScalar(0.5);
 			const lift = Math.max(1, tmpA.distanceTo(tmpB) * (m.userData.isLineage ? 0.32 : 0.2));
@@ -996,10 +998,21 @@ export function buildCosmos(state, materials) {
 				tmpMid.add(tmpOut);
 			}
 			tmpMid.addScaledVector(yAxis, lift);
-			const curve = new THREE.QuadraticBezierCurve3(tmpA.clone(), tmpMid.clone(), tmpB.clone());
-			const newGeom = new THREE.TubeGeometry(curve, 48, m.userData.linkWidth, 6, false);
-			m.geometry.dispose();
-			m.geometry = newGeom;
+
+			// Update pre-allocated buffer geometry directly
+			const posAttr = m.geometry.attributes.position;
+			const arr = posAttr.array;
+			for (let i = 0; i <= LINK_SEGMENTS; i++) {
+				const t = i / LINK_SEGMENTS;
+				const u = 1 - t;
+				const w0 = u * u;
+				const w1 = 2 * u * t;
+				const w2 = t * t;
+				arr[i * 3]     = w0 * tmpA.x + w1 * tmpMid.x + w2 * tmpB.x;
+				arr[i * 3 + 1] = w0 * tmpA.y + w1 * tmpMid.y + w2 * tmpB.y;
+				arr[i * 3 + 2] = w0 * tmpA.z + w1 * tmpMid.z + w2 * tmpB.z;
+			}
+			posAttr.needsUpdate = true;
 		}
 	}
 

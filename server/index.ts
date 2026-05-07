@@ -226,6 +226,39 @@ app.get("/api/wallet", (_req, res) => {
 app.get("/api/coins", (_req, res) => {
 	res.json(getCoinOverview());
 });
+
+// Payment modal: authorize + settle
+app.post("/api/pay/authorize", async (req, res) => {
+	const { tokenId, amount, recipient, validForSec, keyName } = req.body;
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	try {
+		const r = await fetch(dispatchUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ prefix: "/coin", action: "authorizePayment", args: [{ tokenId, amount, recipient, validForSec, keyName }] }),
+		});
+		const data = await r.json();
+		res.status(r.status).json(data);
+	} catch (err: any) {
+		res.status(500).json({ ok: false, error: err?.message ?? String(err) });
+	}
+});
+
+app.post("/api/pay/settle", async (req, res) => {
+	const { authorization, signature, keyName } = req.body;
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	try {
+		const r = await fetch(dispatchUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ prefix: "/coin", action: "settlePayment", args: [{ authorization, signature, keyName }] }),
+		});
+		const data = await r.json();
+		res.status(r.status).json(data);
+	} catch (err: any) {
+		res.status(500).json({ ok: false, error: err?.message ?? String(err) });
+	}
+});
 // ── Static: three.js + frontend ────────────────────────────────────
 //
 // Serve three's ESM bundle from node_modules so the browser can resolve
