@@ -138,8 +138,65 @@ const TYPE_LAYOUT = {
 	unknown:    { radius: 24, y: 0,    scale: 0.25 },
 };
 
-function layoutForType(typeKey) {
-	return TYPE_LAYOUT[typeKey] ?? { radius: 24, y: 0, scale: 0.25 };
+function layoutForType(typeKey, computedRadii) {
+	const base = TYPE_LAYOUT[typeKey] ?? { radius: 24, y: 0, scale: 0.25 };
+	const radius = computedRadii?.get(typeKey) ?? base.radius;
+	return { ...base, radius };
+}
+
+// Priority order for ring placement (inner to outer).
+// Types earlier in the list get priority placement near the center.
+// New types not listed here are appended automatically after the last known type.
+const TYPE_PRIORITY = [
+	"agent",
+	"trading_agent",
+	"peer",
+	"chat",
+	"ttt",
+	"account",
+	"pinned_fact",
+	"reminder",
+	"type",
+	"milestone",
+	"chain.token",
+	"chain.coin.bucket",
+	"chain.coin.offer",
+	"program",
+	"typescript",
+	"javascript",
+	"json",
+	"source",
+	"proto",
+	"unknown",
+];
+
+function computeTypeRadii(byType) {
+	const computed = new Map();
+	let prevRadius = 0;
+
+	for (const typeKey of TYPE_PRIORITY) {
+		const list = byType.get(typeKey);
+		if (!list || list.length === 0) continue;
+		const base = TYPE_LAYOUT[typeKey] ?? TYPE_LAYOUT.unknown;
+		const gap = Math.min(4.0, Math.max(1.5, 1.0 + list.length * 0.15));
+		const radius = Math.max(base.radius, prevRadius + gap);
+		computed.set(typeKey, radius);
+		prevRadius = radius;
+	}
+
+	// Self-adjusting: any unexpected types not in TYPE_PRIORITY get appended
+	// after all known types, maintaining automatic spacing.
+	for (const [typeKey, list] of byType) {
+		if (computed.has(typeKey) || typeKey === "chain.anchor") continue;
+		if (!list || list.length === 0) continue;
+		const base = TYPE_LAYOUT[typeKey] ?? TYPE_LAYOUT.unknown;
+		const gap = Math.min(4.0, Math.max(1.5, 1.0 + list.length * 0.15));
+		const radius = Math.max(base.radius, prevRadius + gap);
+		computed.set(typeKey, radius);
+		prevRadius = radius;
+	}
+
+	return { computed, maxRadius: prevRadius };
 }
 
 // Deterministic angle permutation so items of the same type don't
@@ -341,10 +398,24 @@ export function buildCosmos(state, materials) {
 	const nodes = new Map();     // id → { mesh, ring, halo? }
 
 	const visuals = new Map();   // id → visual state (lastSeen, baseEmissive, etc.)
+
+	// ── Dynamic layout radii ───────────────────────────────────────
+	// Compute radii based on actual node counts so dense rings get more space
+	// and new types are accommodated automatically.
+	const { computed: computedRadii, maxRadius } = computeTypeRadii(byType);
+
+	// Deterministic processing order: priority list first, then any
+	// unknown types appended. Ensures parents are placed before satellites.
+	const typeKeysOrdered = [];
+	for (const tk of TYPE_PRIORITY) if (byType.has(tk)) typeKeysOrdered.push(tk);
+	for (const tk of byType.keys()) if (!typeKeysOrdered.includes(tk)) typeKeysOrdered.push(tk);
+
 	// Nodes --------------------------------------------------------
-	for (const [typeKey, list] of byType) {
+	for (const typeKey of typeKeysOrdered) {
+		const list = byType.get(typeKey);
+		if (!list || list.length === 0) continue;
 		const isAgentType = typeKey === "agent" || typeKey === "trading_agent";
-		const { radius, y, scale, featured } = layoutForType(typeKey);
+		const { radius, y, scale, featured } = layoutForType(typeKey, computedRadii);
 		const { color, hex } = colorForType(typeKey);
 		const surface = planetTextureFor(typeKey, hex);
 
@@ -559,7 +630,7 @@ export function buildCosmos(state, materials) {
 	// Anchor chain: arrange anchors in a flat outward ring.
 	const anchors = state.objects.filter((o) => o.typeKey === "chain.anchor");
 	const anchorChain = [];
-	if (anchors.length > 1) {
+	if (anchors.length > 0) {
 		const anchorById = new Map(anchors.map((a) => [a.id, a]));
 		const seen = new Set();
 		// Find genesis (no previous_anchor or previous_anchor not in our set)
@@ -590,29 +661,30 @@ export function buildCosmos(state, materials) {
 			if (!seen.has(a.id)) anchorChain.push(a);
 		}
 
-		if (anchorChain.length > 1) {
-			const R0 = 16;
-			const DR = 0.01;
-			const DTHETA = 0.02; // ~1.1° per step → very tight
-			for (let i = 0; i < anchorChain.length; i++) {
-				const obj = anchorChain[i];
-				const node = nodes.get(obj.id);
-				if (!node) continue;
-				const theta = i * DTHETA + 0.3;
-				const r = R0 + i * DR;
-				const y = jitterY(obj.id) * 0.08;
-				const pos = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r);
-				positions.get(obj.id).copy(pos);
-				node.mesh.position.copy(pos);
-				if (node.halo) node.halo.position.copy(pos);
-				node.body.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
-				// Head anchor (newest) gets a size + glow boost so the chain tip is obvious.
-				if (i === anchorChain.length - 1) {
-					node.mesh.scale.multiplyScalar(1.6);
-					visuals.get(obj.id).baseRadius *= 1.6;
-					if (node.mesh.material.emissiveIntensity !== undefined) {
-						node.mesh.material.emissiveIntensity = 0.8;
-					}
+		// Dynamic spiral placement: starts just outside the outermost non-anchor
+		// ring and scales tightness based on anchor count.
+		const anchorGap = Math.min(4.0, Math.max(2.0, 1.5 + anchors.length * 0.1));
+		const R0 = maxRadius + anchorGap;
+		const DR = anchors.length > 1 ? Math.max(0.003, 2.5 / anchors.length) : 0;
+		const DTHETA = 0.04;
+		for (let i = 0; i < anchorChain.length; i++) {
+			const obj = anchorChain[i];
+			const node = nodes.get(obj.id);
+			if (!node) continue;
+			const theta = i * DTHETA + 0.3;
+			const r = R0 + i * DR;
+			const y = jitterY(obj.id) * 0.08;
+			const pos = new THREE.Vector3(Math.cos(theta) * r, y, Math.sin(theta) * r);
+			positions.get(obj.id).copy(pos);
+			node.mesh.position.copy(pos);
+			if (node.halo) node.halo.position.copy(pos);
+			node.body.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
+			// Head anchor (newest) gets a size + glow boost so the chain tip is obvious.
+			if (i === anchorChain.length - 1) {
+				node.mesh.scale.multiplyScalar(1.6);
+				visuals.get(obj.id).baseRadius *= 1.6;
+				if (node.mesh.material.emissiveIntensity !== undefined) {
+					node.mesh.material.emissiveIntensity = 0.8;
 				}
 			}
 		}
