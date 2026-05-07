@@ -301,6 +301,41 @@ export function buildCosmos(state, materials) {
 	for (const bucket of orbitChildren.values()) bucket.sort();
 	const spawnDepthOf = (obj) => Number(obj.scalars?.spawn_depth ?? 0);
 
+	// ── Crypto value scaling ───────────────────────────────────────
+	// Coin buckets, tokens, and offers scale by economic weight so a
+	// wallet holding 1M coins is visually distinct from one holding 5.
+	function cryptoValue(obj) {
+		const type = obj.typeKey;
+		if (type === "chain.coin.bucket" && obj.coinState) {
+			try { return Number(obj.coinState.totalAmount) || 0; } catch { return 0; }
+		}
+		if (type === "chain.token") {
+			const supply = obj.rawFields?.total_supply ?? obj.rawFields?.supply ?? obj.scalars?.total_supply;
+			if (supply != null) try { return Number(supply) || 0; } catch { return 0; }
+		}
+		if (type === "chain.coin.offer") {
+			const amount = obj.rawFields?.amount ?? obj.scalars?.amount;
+			if (amount != null) try { return Number(amount) || 0; } catch { return 0; }
+		}
+		return 0;
+	}
+	const cryptoMax = new Map();
+	for (const obj of state.objects) {
+		const val = cryptoValue(obj);
+		if (val > 0) {
+			const prev = cryptoMax.get(obj.typeKey) ?? 0;
+			if (val > prev) cryptoMax.set(obj.typeKey, val);
+		}
+	}
+	function valueScaleFor(obj) {
+		const type = obj.typeKey;
+		const val = cryptoValue(obj);
+		const max = cryptoMax.get(type);
+		if (!val || !max || max <= 0) return null;
+		// Log-scaled 0.5..2.0 range; tiny wallets still visible, whales prominent
+		const t = Math.log10(1 + val) / Math.log10(1 + max);
+		return 0.5 + t * 1.5;
+	}
 	const positions = new Map(); // id → THREE.Vector3
 	const homePositions = new Map(); // id → THREE.Vector3 (frozen after placement)
 	const nodes = new Map();     // id → { mesh, ring, halo? }
@@ -385,9 +420,9 @@ export function buildCosmos(state, materials) {
 				parentId = null;
 			}
 			// Log-scaled size by change count (floor at 0.5, gentler growth).
-			const changeScale = Math.max(0.5, Math.min(1.6, Math.log10(1 + obj.changeCount) * 0.5 + 0.6));
+			const vScale = valueScaleFor(obj);
+			const changeScale = vScale != null ? vScale : Math.max(0.5, Math.min(1.6, Math.log10(1 + obj.changeCount) * 0.5 + 0.6));
 			const r = scale * placementScale * changeScale * 0.6;
-			let baseEmissive;
 			let mat;
 			if (isFeatured) {
 				// Graice (the agent star) is a self-luminous body. Material has
@@ -417,7 +452,7 @@ export function buildCosmos(state, materials) {
 			const mesh = new THREE.Mesh(typeKey === "chain.anchor" ? materials.sphereSmall : materials.sphere, mat);
 			mesh.position.copy(pos);
 			mesh.scale.setScalar(r);
-			mesh.userData = { kind: "object", id: obj.id, typeKey, obj };
+			mesh.userData = { kind: "object", id: obj.id, typeKey, obj, valueScale: vScale };
 			applyStoredStyle(mesh);
 			group.add(mesh);
 

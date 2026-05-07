@@ -315,8 +315,9 @@ function setupThree() {
 			legend.appendChild(li);
 		}
 		renderJobs(snapshot.objects);
-		renderCrypto(snapshot.objects);
+		renderCoins(snapshot.objects);
 		startJobsRefresh();
+		startTasksRefresh();
 	}
 // Re-render the jobs panel from a fresh /api/state every JOBS_POLL_MS.
 // Each row shows context-window fill (the bar that drives compaction),
@@ -329,11 +330,101 @@ function startJobsRefresh() {
 		try {
 			const s = await fetch("/api/state").then((r) => r.json());
 			renderJobs(s.objects);
-			renderCrypto(s.objects);
+			renderCoins(s.objects);
 		} catch { /* keep last paint on transient error */ }
 	}, JOBS_POLL_MS);
 	// Smooth 1Hz tick to update reminder countdown bars between polls.
 	setInterval(tickReminderBars, 1000);
+}
+
+// ── Tasks panel ──────────────────────────────────────────────────
+
+const TASKS_POLL_MS = 5000;
+const DAEMON_TASKS_URL = "http://127.0.0.1:6430/tasks";
+let tasksTimer = 0;
+
+function startTasksRefresh() {
+	clearInterval(tasksTimer);
+	fetchAndRenderTasks();
+	tasksTimer = setInterval(fetchAndRenderTasks, TASKS_POLL_MS);
+}
+
+async function fetchAndRenderTasks() {
+	try {
+		const res = await fetch(DAEMON_TASKS_URL);
+		const data = await res.json();
+		renderTasks(data.tasks ?? []);
+	} catch {
+		/* keep last paint on transient error */
+	}
+}
+
+function renderTasks(tasks) {
+	const host = document.getElementById("tasks-list");
+	const countEl = document.getElementById("tasks-count");
+	if (!host) return;
+	countEl.textContent = String(tasks.length);
+	host.innerHTML = "";
+
+	// Sort: enabled first, then by name
+	tasks.sort((a, b) => {
+		if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+		return (a.name ?? "").localeCompare(b.name ?? "");
+	});
+
+	for (const t of tasks) {
+		const li = document.createElement("li");
+		li.className = "task-row" + (t.enabled ? "" : " disabled");
+
+		const label = document.createElement("label");
+		label.className = "task-toggle";
+		const cb = document.createElement("input");
+		cb.type = "checkbox";
+		cb.checked = t.enabled;
+		cb.addEventListener("change", async () => {
+			try {
+				const res = await fetch(`${DAEMON_TASKS_URL}/${encodeURIComponent(t.id)}/toggle`, { method: "POST" });
+				const data = await res.json();
+				if (!data.ok) console.error("Toggle failed:", data.error);
+				// Refresh the list after a short delay to show updated state
+				setTimeout(fetchAndRenderTasks, 300);
+			} catch (err) {
+				console.error("Toggle error:", err);
+			}
+		});
+		const slider = document.createElement("span");
+		slider.className = "task-toggle-slider";
+		label.appendChild(cb);
+		label.appendChild(slider);
+
+		const info = document.createElement("div");
+		info.style.minWidth = "0";
+		const name = document.createElement("div");
+		name.className = "task-name";
+		name.textContent = t.name ?? t.id;
+		if (t.programId) {
+			name.style.cursor = "pointer";
+			name.title = "Click to inspect source";
+			name.addEventListener("click", () => select(t.programId, { focus: true }));
+		}
+		const meta = document.createElement("div");
+		meta.className = "task-meta";
+		const interval = t.intervalMs ? `${(t.intervalMs / 1000).toFixed(0)}s` : "-";
+		meta.textContent = `${t.type} · ${interval}`;
+		info.appendChild(name);
+		info.appendChild(meta);
+
+		li.appendChild(info);
+		li.appendChild(label);
+		host.appendChild(li);
+	}
+
+	if (tasks.length === 0) {
+		const li = document.createElement("li");
+		li.className = "task-row empty";
+		li.textContent = "no tasks";
+		host.appendChild(li);
+	}
 }
 
 function tickReminderBars() {
@@ -399,65 +490,65 @@ function renderJobs(objects) {
 	}
 }
 
-// Crypto panel: coins + recent chain ops
-async function renderCrypto(objects) {
-  const host = document.getElementById("crypto-list");
-  const countEl = document.getElementById("crypto-count");
-  if (!host) return;
-  try {
-    const [{ buckets }, recent] = await Promise.all([
-      fetch("/api/coins").then((r) => r.json()),
-      fetch("/api/events/recent").then((r) => r.json()),
-    ]);
-    countEl.textContent = String(buckets.length);
-    host.innerHTML = "";
+	// Coins panel: coin buckets + recent chain ops
+	async function renderCoins(objects) {
+		const host = document.getElementById("crypto-list");
+		const countEl = document.getElementById("crypto-count");
+		if (!host) return;
+		try {
+			const [{ buckets }, recent] = await Promise.all([
+				fetch("/api/coins").then((r) => r.json()),
+				fetch("/api/events/recent").then((r) => r.json()),
+			]);
+			countEl.textContent = String(buckets.length);
+			host.innerHTML = "";
 
-	for (const b of buckets) {
-		const cs = b.coinState;
-		const tokenLabel = cs.tokenName
-			? (cs.tokenSymbol ? `${cs.tokenName} (${cs.tokenSymbol})` : cs.tokenName)
-			: (cs.tokenSymbol || "Coin Bucket");
-		const li = document.createElement("li");
-		li.className = "crypto-row";
-		li.innerHTML = `
-			<span class="crypto-dot" style="background:#c0c0c0"></span>
-			<span class="crypto-name">${tokenLabel}</span>
-			<span class="crypto-meta">${shortId(b.id)} · ${cs.unspentCount} coins · supply ${cs.totalAmount}</span>
-		`;
-		li.addEventListener("click", () => select(b.id, { focus: true }));
-		host.appendChild(li);
+			for (const b of buckets) {
+				const cs = b.coinState;
+				const tokenLabel = cs.tokenName
+					? (cs.tokenSymbol ? `${cs.tokenName} (${cs.tokenSymbol})` : cs.tokenName)
+					: (cs.tokenSymbol || "Coin Bucket");
+				const li = document.createElement("li");
+				li.className = "coins-row";
+				li.innerHTML = `
+					<span class="coins-dot" style="background:#c0c0c0"></span>
+					<span class="coins-name">${tokenLabel}</span>
+					<span class="coins-meta">${shortId(b.id)} · ${cs.unspentCount} coins · supply ${cs.totalAmount}</span>
+				`;
+				li.addEventListener("click", () => select(b.id, { focus: true }));
+				host.appendChild(li);
+			}
+
+			const chainEvents = (recent.events ?? [])
+				.filter((ev) => ev.typeKey === "chain.coin.bucket" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.coin.op")))
+				.slice(-10)
+				.reverse();
+
+			if (chainEvents.length > 0) {
+				const section = document.createElement("div");
+				section.className = "coins-section";
+				section.innerHTML = "<h4>Recent ops</h4>";
+				for (const ev of chainEvents) {
+					const op = ev.ops?.find((o) => o.preview);
+					const d = document.createElement("div");
+					d.className = "coins-op";
+					const preview = op?.preview ?? "chain op";
+					d.innerHTML = `<span class="coins-op-kind">${shortId(ev.objectId)}</span><span class="coins-op-amount">${preview}</span>`;
+					section.appendChild(d);
+				}
+				host.appendChild(section);
+			}
+
+			if (buckets.length === 0) {
+				const li = document.createElement("li");
+				li.className = "coins-row empty";
+				li.textContent = "no coins";
+				host.appendChild(li);
+			}
+		} catch {
+			// keep last paint on transient error
+		}
 	}
-
-    const chainEvents = (recent.events ?? [])
-      .filter((ev) => ev.typeKey === "chain.coin.bucket" || (ev.ops ?? []).some((op) => op.preview?.includes("chain.coin.op")))
-      .slice(-10)
-      .reverse();
-
-    if (chainEvents.length > 0) {
-      const section = document.createElement("div");
-      section.className = "crypto-section";
-      section.innerHTML = "<h4>Recent ops</h4>";
-      for (const ev of chainEvents) {
-        const op = ev.ops?.find((o) => o.preview);
-        const d = document.createElement("div");
-        d.className = "crypto-op";
-        const preview = op?.preview ?? "chain op";
-        d.innerHTML = `<span class="crypto-op-kind">${shortId(ev.objectId)}</span><span class="crypto-op-amount">${preview}</span>`;
-        section.appendChild(d);
-      }
-      host.appendChild(section);
-    }
-
-    if (buckets.length === 0) {
-      const li = document.createElement("li");
-      li.className = "crypto-row empty";
-      li.textContent = "no coins";
-      host.appendChild(li);
-    }
-  } catch {
-    // keep last paint on transient error
-  }
-}
 
 
 // Cached so the 1Hz tick can recompute countdown bars without re-fetching.
