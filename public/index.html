@@ -175,6 +175,43 @@
 
 	<div id="tooltip" class="tooltip" hidden></div>
 
+	<!-- Payment Modal -->
+	<div id="pay-modal" class="modal-overlay" hidden>
+		<div class="modal">
+			<div class="modal-header">
+				<h3>Pay with x402</h3>
+				<button class="modal-close" id="pay-modal-close">&times;</button>
+			</div>
+			<div class="modal-body">
+				<div class="pay-field">
+					<label>Amount</label>
+					<input type="text" id="pay-amount" value="10" readonly />
+				</div>
+				<div class="pay-field">
+					<label>Token ID</label>
+					<input type="text" id="pay-token" placeholder="paste token id" />
+				</div>
+				<div class="pay-field">
+					<label>Recipient</label>
+					<input type="text" id="pay-recipient" placeholder="pubkey hex" />
+				</div>
+				<div class="pay-field">
+					<label>Valid for (sec)</label>
+					<input type="number" id="pay-valid-for" value="60" />
+				</div>
+				<div class="pay-field">
+					<label>Wallet Key</label>
+					<input type="text" id="pay-key" value="default" />
+				</div>
+				<div id="pay-status" class="pay-status"></div>
+			</div>
+			<div class="modal-footer">
+				<button id="pay-cancel">Cancel</button>
+				<button id="pay-submit" class="primary">Sign & Pay</button>
+			</div>
+		</div>
+	</div>
+
 	<script type="module" src="./js/main.js"></script>
 </body>
 </html>

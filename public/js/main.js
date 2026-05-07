@@ -19,6 +19,8 @@ import { buildCosmos } from "./cosmos.js";
 import { colorForType } from "./colors.js";
 	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState, showDaemonTask } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
+
+import { showPaymentModal } from "./payment-modal.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
 	import { getRender, setRender, clearRender, applyToMesh, updateOverlays } from "./planet-styles.js";
 	import { initPhysics } from "./physics.js";
@@ -499,15 +501,24 @@ function renderJobs(objects) {
 		const host = document.getElementById("crypto-list");
 		const countEl = document.getElementById("crypto-count");
 		if (!host) return;
-		try {
-			const [{ buckets }, recent] = await Promise.all([
-				fetch("/api/coins").then((r) => r.json()),
-				fetch("/api/events/recent").then((r) => r.json()),
-			]);
-			countEl.textContent = String(buckets.length);
-			host.innerHTML = "";
 
-			for (const b of buckets) {
+	try {
+		const [{ buckets }, recent] = await Promise.all([
+			fetch("/api/coins").then((r) => r.json()),
+			fetch("/api/events/recent").then((r) => r.json()),
+		]);
+		countEl.textContent = String(buckets.length);
+		host.innerHTML = "";
+
+		const payBtn = document.createElement("button");
+		payBtn.textContent = "Make Payment";
+		payBtn.className = "primary";
+		payBtn.style.marginBottom = "8px";
+		payBtn.style.width = "100%";
+		payBtn.addEventListener("click", () => showPaymentModal({ amount: "10" }));
+		host.appendChild(payBtn);
+
+		for (const b of buckets) {
 				const cs = b.coinState;
 				const tokenLabel = cs.tokenName
 					? (cs.tokenSymbol ? `${cs.tokenName} (${cs.tokenSymbol})` : cs.tokenName)

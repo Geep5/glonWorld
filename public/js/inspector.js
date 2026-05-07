@@ -8,6 +8,8 @@
 	import { getRender } from "./planet-styles.js";
 	import * as planetForge from "./planet-forge.js";
 
+
+import { initPlanetForgePayButton } from "./payment-modal.js";
 	const els = {
 		empty: document.getElementById("inspector-empty"),
 		content: document.getElementById("inspector-content"),
@@ -52,6 +54,8 @@
 		keySaveBtn: els.forgeKeySave,
 	});
 	let handlers = {};
+
+	initPlanetForgePayButton(els.forgeSend);
 
 export function bindInspector({ onNavigate, onInject }) {
 	handlers = { onNavigate, onInject };
