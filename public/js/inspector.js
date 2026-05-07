@@ -152,6 +152,46 @@ export function clear() {
 	els.content.hidden = true;
 }
 
+export function showDaemonTask(task) {
+	currentId = null;
+	els.empty.hidden = true;
+	els.content.hidden = false;
+
+	// Header
+	els.typeBadge.textContent = "daemon";
+	els.typeBadge.style.background = "color-mix(in oklab, #a78bfa 65%, #000)";
+	els.title.textContent = task.name ?? task.id;
+	els.subtitle.textContent = `id: ${task.id}`;
+
+	// Hide object-specific sections
+	els.agentSection.hidden = true;
+	els.scalarsSection.hidden = true;
+	els.linksSection.hidden = true;
+	els.coinSection.hidden = true;
+	els.styleSection.hidden = true;
+	els.contentSection.hidden = true;
+	els.changes.innerHTML = "";
+	els.changeCount.textContent = "";
+
+	// Daemon info section
+	const info = document.createElement("div");
+	info.className = "insp-section";
+	info.innerHTML = `
+		<h3>Daemon Task</h3>
+		<div class="kv">
+			<div class="row"><span class="k">type</span><span class="v">${task.type}</span></div>
+			<div class="row"><span class="k">enabled</span><span class="v">${task.enabled ? "yes" : "no"}</span></div>
+			<div class="row"><span class="k">interval</span><span class="v">${task.intervalMs ? `${(task.intervalMs / 1000).toFixed(0)}s` : "-"}</span></div>
+			<div class="row"><span class="k">location</span><span class="v">http://127.0.0.1:6430/tasks</span></div>
+		</div>
+	`;
+	// Remove any existing daemon-info section
+	const existing = els.content.querySelector(".daemon-info");
+	if (existing) existing.remove();
+	info.classList.add("daemon-info");
+	els.content.appendChild(info);
+}
+
 function render(detail, changesResponse) {
 	const obj = detail.object;
 	els.empty.hidden = true;

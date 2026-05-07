@@ -17,7 +17,7 @@ import { RenderPass }     from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { buildCosmos } from "./cosmos.js";
 import { colorForType } from "./colors.js";
-	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState } from "./inspector.js";
+	import { bindInspector, setLanding, showObject, clear as clearInspector, setContextState, showDaemonTask } from "./inspector.js";
 	import { setupLiveLog } from "./livelog.js";
 	import { openAgentChat, initAgentChats } from "./chat.js";
 	import { getRender, setRender, clearRender, applyToMesh, updateOverlays } from "./planet-styles.js";
@@ -406,6 +406,10 @@ function renderTasks(tasks) {
 			name.style.cursor = "pointer";
 			name.title = "Click to inspect source";
 			name.addEventListener("click", () => select(t.programId, { focus: true }));
+		} else if (t.type === "daemon") {
+			name.style.cursor = "pointer";
+			name.title = "Click to inspect daemon";
+			name.addEventListener("click", () => showDaemonTask(t));
 		}
 		const meta = document.createElement("div");
 		meta.className = "task-meta";
