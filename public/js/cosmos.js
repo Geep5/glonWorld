@@ -423,9 +423,9 @@ export function buildCosmos(state, materials) {
 			const vScale = valueScaleFor(obj);
 			const changeScale = vScale != null ? vScale : Math.max(0.5, Math.min(1.6, Math.log10(1 + obj.changeCount) * 0.5 + 0.6));
 			const r = scale * placementScale * changeScale * 0.6;
+			let baseEmissive;
 			let mat;
 			if (isFeatured) {
-				// Graice (the agent star) is a self-luminous body. Material has
 				// no diffuse \u2014 it doesn't reflect, it emits \u2014 and the procedural
 				// surface drives the emissive map so blotches read as plasma
 				// cells. Tone mapping is bypassed so the emissive value stays
