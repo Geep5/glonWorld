@@ -116,30 +116,30 @@ function shadeRgb({ r, g, b }, k) {
 // radius, y-offset, node scale, importance (bigger = featured)
 const TYPE_LAYOUT = {
 	agent:      { radius: 0,  y: 0,    scale: 2.2, featured: true },
-	trading_agent: { radius: 3, y: 0, scale: 0.9, featured: false },
-	peer:       { radius: 4.5,  y: 0.5,  scale: 0.9 },
-	chat:       { radius: 6, y: -0.5, scale: 0.75 },
-	ttt:        { radius: 7.5, y: 0.8,  scale: 0.65 },
-	account:    { radius: 9, y: -0.8, scale: 0.65 },
-	pinned_fact: { radius: 10.5, y: -1.0, scale: 0.6 },
-	reminder:    { radius: 12, y: 0.6,  scale: 0.6 },
-	type:        { radius: 13.5, y: -0.3, scale: 0.6 },
-	milestone:   { radius: 15, y: 1.0,  scale: 0.65 },
-	"chain.token": { radius: 16.5, y: 0.5, scale: 0.8 },
-	"chain.coin.bucket": { radius: 18, y: 0.3, scale: 0.8 },
-	"chain.coin.offer": { radius: 19.5, y: -0.3, scale: 0.8 },
-	program:    { radius: 22, y: 1.5,  scale: 0.45 },
-	typescript: { radius: 24.5, y: 0,    scale: 0.4 },
-	javascript: { radius: 26.5, y: 0,    scale: 0.4 },
-	json:       { radius: 28.5, y: -2.0, scale: 0.4 },
-	source:     { radius: 30.5, y: 0,    scale: 0.4 },
-	proto:      { radius: 32.5, y: 2.0,  scale: 0.4 },
-	"chain.anchor": { radius: 36, y: 0, scale: 0.25 },
-	unknown:    { radius: 40, y: 0,    scale: 0.25 },
+	trading_agent: { radius: 2, y: 0, scale: 0.9, featured: false },
+	peer:       { radius: 3,  y: 0.5,  scale: 0.9 },
+	chat:       { radius: 4, y: -0.5, scale: 0.75 },
+	ttt:        { radius: 5, y: 0.8,  scale: 0.65 },
+	account:    { radius: 6, y: -0.8, scale: 0.65 },
+	pinned_fact: { radius: 7, y: -1.0, scale: 0.6 },
+	reminder:    { radius: 8, y: 0.6,  scale: 0.6 },
+	type:        { radius: 9, y: -0.3, scale: 0.6 },
+	milestone:   { radius: 10, y: 1.0,  scale: 0.65 },
+	"chain.token": { radius: 11, y: 0.5, scale: 0.8 },
+	"chain.coin.bucket": { radius: 12, y: 0.3, scale: 0.8 },
+	"chain.coin.offer": { radius: 13, y: -0.3, scale: 0.8 },
+	program:    { radius: 14, y: 1.5,  scale: 0.45 },
+	typescript: { radius: 16, y: 0,    scale: 0.4 },
+	javascript: { radius: 17, y: 0,    scale: 0.4 },
+	json:       { radius: 18, y: -2.0, scale: 0.4 },
+	source:     { radius: 19, y: 0,    scale: 0.4 },
+	proto:      { radius: 20, y: 2.0,  scale: 0.4 },
+	"chain.anchor": { radius: 22, y: 0, scale: 0.25 },
+	unknown:    { radius: 24, y: 0,    scale: 0.25 },
 };
 
 function layoutForType(typeKey) {
-	return TYPE_LAYOUT[typeKey] ?? { radius: 40, y: 0, scale: 0.25 };
+	return TYPE_LAYOUT[typeKey] ?? { radius: 24, y: 0, scale: 0.25 };
 }
 
 // Deterministic angle permutation so items of the same type don't
@@ -586,8 +586,8 @@ export function buildCosmos(state, materials) {
 		}
 
 		if (anchorChain.length > 1) {
-			const R0 = 28;
-			const DR = 0.03;
+			const R0 = 16;
+			const DR = 0.01;
 			const DTHETA = 0.02; // ~1.1° per step → very tight
 			for (let i = 0; i < anchorChain.length; i++) {
 				const obj = anchorChain[i];
