@@ -241,13 +241,10 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 
 	/* ── Panel collapse chrome ──────────────────────────────────── */
 	#legend,
-	#jobs,
-	#tasks,
 	#crypto,
 	#inspector {
 		position: relative;
 	}
-
 	.panel-collapse {
 		position: absolute;
 		top: 4px;
