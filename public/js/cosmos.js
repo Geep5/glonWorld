@@ -584,6 +584,11 @@ export function buildCosmos(state, materials) {
 			anchorChain.push(a);
 			curId = nextOf.get(curId);
 		}
+		// Append any unvisited anchors (orphans / broken links) so they don't
+		// sit on the outer TYPE_LAYOUT ring at radius 22.
+		for (const a of anchors) {
+			if (!seen.has(a.id)) anchorChain.push(a);
+		}
 
 		if (anchorChain.length > 1) {
 			const R0 = 16;
