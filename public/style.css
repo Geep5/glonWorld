@@ -274,10 +274,10 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	}
 
 	/* Collapsed state */
-	#legend.collapsed > *:not(.panel-collapse):not(h3:first-child),
-	#jobs.collapsed > *:not(.panel-collapse):not(h3:first-child),
-	#tasks.collapsed > *:not(.panel-collapse):not(h3:first-child),
-	#crypto.collapsed > *:not(.panel-collapse):not(h3:first-child) {
+	#legend.collapsed > *:not(.panel-collapse):not(h3),
+	#jobs.collapsed > *:not(.panel-collapse):not(h3),
+	#tasks.collapsed > *:not(.panel-collapse):not(h3),
+	#crypto.collapsed > *:not(.panel-collapse):not(h3) {
 		display: none !important;
 	}
 	#livelog.collapsed .livelog-list {
