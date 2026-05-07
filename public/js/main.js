@@ -776,12 +776,14 @@ function bindUI() {
 		// Draggable panels — whole top 36px is the grab area
 		makeDraggable("legend",    null, "glonAstrolabe.panelPos.legend");
 		makeDraggable("jobs",      null, "glonAstrolabe.panelPos.jobs");
+		makeDraggable("tasks",     null, "glonAstrolabe.panelPos.tasks");
 		makeDraggable("inspector", null, "glonAstrolabe.panelPos.inspector");
 		makeDraggable("crypto",    null, "glonAstrolabe.panelPos.crypto");
 		makeDraggable("livelog",   null, "glonAstrolabe.panelPos.livelog");
 		// Resizable panels — bottom-right corner handle
 		makeResizable("legend",    "glonAstrolabe.panelSize.legend");
 		makeResizable("jobs",      "glonAstrolabe.panelSize.jobs");
+		makeResizable("tasks",     "glonAstrolabe.panelSize.tasks");
 		makeResizable("inspector", "glonAstrolabe.panelSize.inspector");
 		makeResizable("crypto",    "glonAstrolabe.panelSize.crypto");
 		makeResizable("livelog",   "glonAstrolabe.panelSize.livelog");
