@@ -351,7 +351,6 @@ function setupThree() {
 		renderCoins(snapshot.objects);
 		startJobsRefresh();
 		startTasksRefresh();
-		bindTaskForm();
 	}
 // Re-render the jobs panel from a fresh /api/state every JOBS_POLL_MS.
 // Each row shows context-window fill (the bar that drives compaction),
@@ -381,6 +380,7 @@ function startJobsRefresh() {
 		clearInterval(tasksTimer);
 		fetchAndRenderTasks();
 		tasksTimer = setInterval(fetchAndRenderTasks, TASKS_POLL_MS);
+		setInterval(tickTaskBars, 1000);
 	}
 
 	async function fetchAndRenderTasks() {
@@ -400,8 +400,14 @@ function startJobsRefresh() {
 		countEl.textContent = String(tasks.length);
 		host.innerHTML = "";
 
-		// Sort: enabled first, then by name
+		// Sort: pending reminders first by fire time, then enabled daemon tasks, then rest
+		const now = Date.now();
 		tasks.sort((a, b) => {
+			const aIsPending = a.type === "reminder" && a.status === "pending";
+			const bIsPending = b.type === "reminder" && b.status === "pending";
+			if (aIsPending && !bIsPending) return -1;
+			if (!aIsPending && bIsPending) return 1;
+			if (aIsPending && bIsPending) return (a.fireAt ?? 0) - (b.fireAt ?? 0);
 			if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
 			return (a.name ?? "").localeCompare(b.name ?? "");
 		});
@@ -409,6 +415,7 @@ function startJobsRefresh() {
 		for (const t of tasks) {
 			const li = document.createElement("li");
 			const isReminder = t.type === "reminder";
+			const isPending = isReminder && t.status === "pending";
 			li.className = "task-row" + (t.enabled ? "" : " disabled") + (isReminder ? " reminder" : "") + (t.overdue ? " overdue" : "");
 
 			const label = document.createElement("label");
@@ -423,7 +430,6 @@ function startJobsRefresh() {
 						if (!cb.checked) {
 							res = await fetch(`${TASKS_URL}/reminders/${encodeURIComponent(t.id)}/cancel`, { method: "POST" });
 						} else {
-							// Can't re-enable a cancelled reminder; user must recreate
 							cb.checked = false;
 							return;
 						}
@@ -444,9 +450,12 @@ function startJobsRefresh() {
 
 			const info = document.createElement("div");
 			info.style.minWidth = "0";
+			info.style.flex = "1";
+
 			const name = document.createElement("div");
 			name.className = "task-name";
 			name.textContent = t.name ?? t.id;
+
 			if (t.programId) {
 				name.style.cursor = "pointer";
 				name.title = "Click to inspect source";
@@ -455,25 +464,55 @@ function startJobsRefresh() {
 				name.style.cursor = "pointer";
 				name.title = "Click to inspect daemon";
 				name.addEventListener("click", () => showDaemonTask(t));
+			} else if (isReminder && t.channel === "agent_compose" && t.target) {
+				// Open chat with the target agent so user can talk to Graice about the task
+				name.style.cursor = "pointer";
+				name.title = "Click to chat with agent";
+				name.addEventListener("click", () => openAgentChat(t.target, t.name ?? "Agent"));
 			} else if (isReminder) {
 				name.style.cursor = "pointer";
 				name.title = "Click to inspect reminder";
 				name.addEventListener("click", () => select(t.id, { focus: true }));
 			}
+
 			const meta = document.createElement("div");
 			meta.className = "task-meta";
 			let metaText;
 			if (isReminder) {
 				const fireStr = t.fireAt ? new Date(t.fireAt).toLocaleString() : "-";
-				metaText = `reminder · ${t.channel} · ${fireStr}`;
-				if (t.overdue) metaText += " · OVERDUE";
+				if (isPending) {
+					const remaining = Math.max(0, (t.fireAt ?? 0) - now);
+					metaText = `fires in ${formatDuration(remaining)} · ${t.channel}`;
+				} else if (t.status === "sent") {
+					metaText = `fired ${formatTimeAgo(now - (t.fireAt ?? 0))} · ${t.channel}`;
+				} else {
+					metaText = `${t.status} · ${t.channel}`;
+				}
+				if (t.overdue) metaText = `OVERDUE · ${metaText}`;
 			} else {
 				const interval = t.intervalMs ? `${(t.intervalMs / 1000).toFixed(0)}s` : "-";
 				metaText = `${t.type} · ${interval}`;
 			}
 			meta.textContent = metaText;
+
+			// Progress bar for reminders
+			let bar = null;
+			if (isReminder && t.fireAt) {
+				const created = t.createdAt ?? (t.fireAt - 86400000); // fallback: assume 24h window
+				const total = Math.max(1, t.fireAt - created);
+				const elapsed = Math.max(0, Math.min(total, now - created));
+				const pct = Math.round((elapsed / total) * 100);
+				bar = document.createElement("div");
+				bar.className = "task-bar";
+				bar.innerHTML = `<div class="task-bar-fill" style="width:${pct}%"></div>`;
+				// Store for tick updates
+				li.dataset.fire = String(t.fireAt);
+				li.dataset.created = String(created);
+			}
+
 			info.appendChild(name);
 			info.appendChild(meta);
+			if (bar) info.appendChild(bar);
 
 			li.appendChild(info);
 			li.appendChild(label);
@@ -483,63 +522,29 @@ function startJobsRefresh() {
 		if (tasks.length === 0) {
 			const li = document.createElement("li");
 			li.className = "task-row empty";
-			li.textContent = "no tasks";
+			li.textContent = "no tasks — talk to Graice to schedule one";
 			host.appendChild(li);
 		}
 	}
 
-	// ── New task form ────────────────────────────────────────────────
-	function bindTaskForm() {
-		const btn = document.getElementById("task-new-btn");
-		const form = document.getElementById("task-new-form");
-		const cancel = document.getElementById("task-new-cancel");
-		const fireInput = document.getElementById("task-new-fire");
-		if (!btn || !form) return;
-
-		// Default fire time to tomorrow 5am PST
-		const now = new Date();
-		const pst = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
-		pst.setDate(pst.getDate() + 1);
-		pst.setHours(5, 0, 0, 0);
-		const isoLocal = new Date(pst.getTime() - pst.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-		if (fireInput) fireInput.value = isoLocal;
-
-		btn.addEventListener("click", () => {
-			form.hidden = !form.hidden;
-		});
-		cancel?.addEventListener("click", () => {
-			form.hidden = true;
-		});
-		form.addEventListener("submit", async (e) => {
-			e.preventDefault();
-			const name = document.getElementById("task-new-name").value.trim();
-			const channel = document.getElementById("task-new-channel").value;
-			const target = document.getElementById("task-new-target").value.trim();
-			const fireAt = document.getElementById("task-new-fire").value;
-			const payloadRaw = document.getElementById("task-new-payload").value.trim();
-			let payload;
-			try {
-				payload = payloadRaw ? JSON.parse(payloadRaw) : {};
-			} catch {
-				payload = { prompt: payloadRaw || "run task" };
-			}
-			const fireIso = new Date(fireAt).toISOString();
-			try {
-				const res = await fetch("/api/tasks/reminders", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ channel, target, fireAt: fireIso, payload, note: name }),
-				});
-				const data = await res.json();
-				if (!data.ok) {
-					console.error("Schedule failed:", data.error);
-					return;
-				}
-				form.hidden = true;
-				form.reset();
-				fetchAndRenderTasks();
-			} catch (err) {
-				console.error("Schedule error:", err);
+	// Live countdown tick for task progress bars
+	function tickTaskBars() {
+		const now = Date.now();
+		document.querySelectorAll("#tasks-list .task-row.reminder").forEach((row) => {
+			const fire = Number(row.dataset.fire ?? 0);
+			const created = Number(row.dataset.created ?? 0);
+			if (!fire) return;
+			const total = Math.max(1, fire - created);
+			const elapsed = Math.max(0, Math.min(total, now - created));
+			const pct = Math.round((elapsed / total) * 100);
+			const fill = row.querySelector(".task-bar-fill");
+			if (fill) fill.style.width = `${pct}%`;
+			// Update meta text countdown
+			const meta = row.querySelector(".task-meta");
+			if (meta && fire > now) {
+				meta.textContent = `fires in ${formatDuration(fire - now)} · reminder`;
+			} else if (meta && fire <= now) {
+				meta.textContent = `firing now · reminder`;
 			}
 		});
 	}

@@ -69,23 +69,6 @@
 	<aside id="tasks">
 		<button class="panel-collapse" data-panel="tasks" title="Collapse">─</button>
 		<h3>Tasks <span id="tasks-count" class="count"></span></h3>
-		<div class="task-toolbar">
-			<button id="task-new-btn" class="task-new-btn" title="New recurring task">+ New</button>
-		</div>
-		<form id="task-new-form" class="task-new-form" hidden>
-			<input type="text" id="task-new-name" placeholder="Task name" required />
-			<select id="task-new-channel">
-				<option value="agent_compose">Agent compose</option>
-				<option value="discord">Discord</option>
-			</select>
-			<input type="text" id="task-new-target" placeholder="Target agent/peer id" />
-			<input type="datetime-local" id="task-new-fire" required />
-			<textarea id="task-new-payload" placeholder='{"prompt": "do the thing"}' rows="3"></textarea>
-			<div class="task-new-actions">
-				<button type="submit">Schedule</button>
-				<button type="button" id="task-new-cancel">Cancel</button>
-			</div>
-		</form>
 		<ul id="tasks-list" class="tasks-list"></ul>
 	</aside>
 	<aside id="crypto">
