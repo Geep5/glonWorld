@@ -3,7 +3,8 @@
  * Self-contained; mirrors glon's coin.ts logic but is read-only.
  */
 
-import type { Block } from "../../../3/glon/src/proto.js";
+	import { dispatchToDaemon } from "./daemon-client.js";
+	import type { Block } from "glon/proto.js";
 
 export const BUCKET_TYPE_KEY = "chain.coin.bucket";
 export const OP_CONTENT_TYPE = "chain.coin.op";
@@ -66,6 +67,21 @@ export function replayBucket(blocks: Block[]): { tokenId: string; coins: Map<str
 	}
 	return { tokenId: "", coins };
 }
+
+	/** Try daemon dispatch first; fall back to local replay if daemon is offline. */
+	export async function replayBucketWithFallback(blocks: Block[]): Promise<{ tokenId: string; coins: Map<string, CoinRecord> }> {
+		const daemonResult = await dispatchToDaemon("/coin", "replayBucket", [blocks]);
+		if (daemonResult) {
+			// Daemon returns plain objects; revive Maps.
+			const { tokenId, coins } = daemonResult as any;
+			const revived = new Map<string, CoinRecord>();
+			for (const [k, v] of Object.entries(coins)) {
+				revived.set(k, v as CoinRecord);
+			}
+			return { tokenId, coins: revived };
+		}
+		return replayBucket(blocks);
+	}
 
 export function buildCoinState(blocks: Block[], fields: Map<string, any>): CoinState | null {
 	const tokenField = fields.get("token_id");

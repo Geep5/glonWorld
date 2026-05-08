@@ -13,10 +13,10 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "../../../3/glon/src/proto.js";
-import { computeState, type ObjectState } from "../../../3/glon/src/dag/dag.js";
-import { hexEncode } from "../../../3/glon/src/crypto.js";
-import { type CoinState, buildCoinState, BUCKET_TYPE_KEY } from "./coins.js";
+	import { decodeChange, unwrapValue, type Change, type Value, type ObjectLink, type Block } from "glon/proto.js";
+	import { computeState, getPrimaryContent, type ObjectState } from "glon/dag/dag.js";
+	import { hexEncode } from "glon/crypto.js";
+	import { type CoinState, buildCoinState, BUCKET_TYPE_KEY } from "./coins.js";
 
 const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
 const CHANGES_DIR = join(GLON_ROOT, "changes");
@@ -89,13 +89,15 @@ export interface AgentStats {
 	contextWindow: number;
 }
 
-export interface VizChange {
-	id: string;
-	parentIds: string[];
-	timestamp: number;
-	author: string;
-	opSummary: string[];
-}
+	export interface VizChange {
+		id: string;
+		parentIds: string[];
+		timestamp: number;
+		author: string;
+		opSummary: string[];
+		/** Authentication extension type, e.g. "ed25519" for chain-mode signed changes. */
+		authType?: string;
+	}
 
 export interface VizBlock {
 	id: string;
@@ -140,13 +142,12 @@ export interface GraphSnapshot {
 	timeline: { bucket: number; count: number }[];
 }
 
-// ── Block kinds (mirrors agent.ts) ──────────────────────────────
-
-const BLOCK_TOOL_USE = "tool_use";
-const BLOCK_TOOL_RESULT = "tool_result";
-const BLOCK_COMPACTION_SUMMARY = "compaction_summary";
-const STYLE_ASSISTANT = 1;
-
+	import {
+		BLOCK_TOOL_USE,
+		BLOCK_TOOL_RESULT,
+		BLOCK_COMPACTION_SUMMARY,
+		STYLE_ASSISTANT,
+	} from "glon/programs/handlers/agent-types.js";
 // ── Disk scan ───────────────────────────────────────────────────
 
 function listObjectDirs(): string[] {
@@ -400,17 +401,7 @@ function buildPerObject(objectId: string, changes: Change[]): PerObject | null {
 		agentStats: state.typeKey === "agent" ? computeAgentStats(state) : undefined,
 	};
 
-	// Eagerly free content bytes; they are reloaded on-demand in getObjectDetail.
-	state.content = new Uint8Array(0);
-
 	return { object, state, changes, blocks, tools, outLinks, coinState };
-	}
-
-	// Helper: recompute state for a single object when content is needed on-demand
-	function recomputeStateForObject(objectId: string): ObjectState | null {
-		const changes = readChangesForObject(objectId);
-		if (changes.length === 0) return null;
-		try { return computeState(changes); } catch { return null; }
 	}
 
 // ── Cache layer ─────────────────────────────────────────────────
@@ -696,16 +687,15 @@ export function getObjectDetail(id: string): {
 	}
 
 	let contentPreview: string | undefined;
-	// Content is cleared in buildPerObject to save RAM; recompute on demand.
-	const contentState = po.state.content.byteLength > 0 ? po.state : recomputeStateForObject(id);
-	if (contentState && contentState.content.byteLength > 0) {
+	const contentBytes = getPrimaryContent(po.state.blocks);
+	if (contentBytes && contentBytes.byteLength > 0) {
 		const limit = 2000;
-		const bytes = contentState.content.byteLength > limit ? contentState.content.slice(0, limit) : contentState.content;
+		const bytes = contentBytes.byteLength > limit ? contentBytes.slice(0, limit) : contentBytes;
 		try {
 			contentPreview = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-			if (contentState.content.byteLength > limit) contentPreview += `\n…[${contentState.content.byteLength - limit} more bytes]`;
+			if (contentBytes.byteLength > limit) contentPreview += `\n…[${contentBytes.byteLength - limit} more bytes]`;
 		} catch {
-			contentPreview = `<${contentState.content.byteLength} bytes binary>`;
+			contentPreview = `<${contentBytes.byteLength} bytes binary>`;
 		}
 	}
 
@@ -757,24 +747,28 @@ export function getObjectChanges(id: string): VizChange[] | null {
 		timestamp: ch.timestamp,
 		author: ch.author,
 		opSummary: ch.ops.map(opSummary),
+		authType: ch.authExtension?.type,
 	}));
 }
 
-function opSummary(op: any): string {
-	if (op.objectCreate) return `create:${op.objectCreate.typeKey}`;
-	if (op.objectDelete) return "delete";
-	if (op.fieldSet) return `field:${op.fieldSet.key}`;
-	if (op.fieldDelete) return `-field:${op.fieldDelete.key}`;
-	if (op.contentSet) return `content:${op.contentSet.content?.byteLength ?? 0}B`;
-	if (op.blockAdd) {
-		const kind = op.blockAdd.block?.content?.custom?.contentType ?? op.blockAdd.block?.content?.custom?.content_type ?? (op.blockAdd.block?.content?.text ? "text" : "block");
-		return `+block:${kind}`;
+	function opSummary(op: any): string {
+		if (op.objectCreate) return `create:${op.objectCreate.typeKey}`;
+		if (op.objectDelete) return "delete";
+		if (op.fieldSet) return `field:${op.fieldSet.key}`;
+		if (op.fieldDelete) return `-field:${op.fieldDelete.key}`;
+		if (op.blockAdd) {
+			const blockId = op.blockAdd.block?.id ?? "";
+			const kind = op.blockAdd.block?.content?.custom?.contentType
+				?? op.blockAdd.block?.content?.custom?.content_type
+				?? (op.blockAdd.block?.content?.text ? "text" : "block");
+			if (blockId === "__content__") return `+content:${op.blockAdd.block?.content?.custom?.data?.byteLength ?? 0}B`;
+			return `+block:${kind}`;
+		}
+		if (op.blockRemove) return `-block:${op.blockRemove.blockId.slice(0, 6)}`;
+		if (op.blockUpdate) return `~block:${op.blockUpdate.blockId.slice(0, 6)}`;
+		if (op.blockMove) return `→block:${op.blockMove.blockId.slice(0, 6)}`;
+		return "?";
 	}
-	if (op.blockRemove) return `-block:${op.blockRemove.blockId.slice(0, 6)}`;
-	if (op.blockUpdate) return `~block:${op.blockUpdate.blockId.slice(0, 6)}`;
-	if (op.blockMove) return `→block:${op.blockMove.blockId.slice(0, 6)}`;
-	return "?";
-}
 
 export function getAgentConversation(id: string): {
 	agent: VizObject;

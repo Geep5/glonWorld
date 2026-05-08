@@ -15,41 +15,42 @@ import { watch, type FSWatcher, readFileSync, existsSync } from "node:fs";
 import { join, sep } from "node:path";
 import { homedir } from "node:os";
 import type { Response } from "express";
-import { decodeChange, type Change, type Block } from "../../../3/glon/src/proto.js";
-import { hexEncode } from "../../../3/glon/src/crypto.js";
-import { getObjectDetail, allObjectIds } from "./reader.js";
+	import { decodeChange, type Change, type Block } from "glon/proto.js";
+	import { hexEncode } from "glon/crypto.js";
+	import { getObjectDetail, allObjectIds } from "./reader.js";
+	const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
+	const CHANGES_DIR = join(GLON_ROOT, "changes");
 
-const GLON_ROOT = process.env.GLON_DATA ?? join(homedir(), ".glon");
-const CHANGES_DIR = join(GLON_ROOT, "changes");
+	const RING_SIZE = 200;
+	const REPLAY_ON_CONNECT = 50;
+	const PREVIEW_CHARS = 100;
+	import {
+		STYLE_ASSISTANT,
+		BLOCK_TOOL_USE,
+		BLOCK_TOOL_RESULT,
+		BLOCK_COMPACTION_SUMMARY,
+	} from "glon/programs/handlers/agent-types.js";
 
-const RING_SIZE = 200;
-const REPLAY_ON_CONNECT = 50;
-const PREVIEW_CHARS = 100;
-
-const STYLE_ASSISTANT = 1;
-const BLOCK_TOOL_USE = "tool_use";
-const BLOCK_TOOL_RESULT = "tool_result";
-const BLOCK_COMPACTION_SUMMARY = "compaction_summary";
-
-export type EventOp =
-	| { kind: "create"; typeKey: string }
-	| { kind: "delete" }
-	| { kind: "field"; key: string; preview?: string }
-	| { kind: "field_delete"; key: string }
-	| { kind: "content"; bytes: number }
-	| {
-		kind: "block";
-		blockKind: "user_text" | "assistant_text" | "tool_use" | "tool_result" | "compaction" | "other";
-		preview?: string;
-		toolName?: string;
-		toolUseId?: string;
-		isError?: boolean;
-		tokensBefore?: number;
-	}
-	| { kind: "block_remove"; blockId: string }
-	| { kind: "block_update"; blockId: string }
-	| { kind: "block_move"; blockId: string };
-
+	export type EventOp =
+		| { kind: "create"; typeKey: string }
+		| { kind: "delete" }
+		| { kind: "field"; key: string; preview?: string }
+		| { kind: "field_delete"; key: string }
+		| {
+				kind: "block";
+				blockKind: "user_text" | "assistant_text" | "tool_use" | "tool_result" | "compaction" | "other";
+				preview?: string;
+				toolName?: string;
+				toolUseId?: string;
+				toolResultFor?: string;
+				isError?: boolean;
+				summary?: string;
+				turnCount?: number;
+				tokensBefore?: number;
+			}
+		| { kind: "block_remove"; blockId: string }
+		| { kind: "block_update"; blockId: string }
+		| { kind: "block_move"; blockId: string };
 export interface LiveEvent {
 	ts: number;
 	changeId: string;
@@ -190,7 +191,6 @@ function summarizeOp(op: any): EventOp | null {
 	if (op.objectDelete) return { kind: "delete" };
 	if (op.fieldSet) return { kind: "field", key: op.fieldSet.key, preview: previewValue(op.fieldSet.value) };
 	if (op.fieldDelete) return { kind: "field_delete", key: op.fieldDelete.key };
-	if (op.contentSet) return { kind: "content", bytes: op.contentSet.content?.byteLength ?? 0 };
 	if (op.blockAdd?.block) return summarizeBlock(op.blockAdd.block);
 	if (op.blockRemove) return { kind: "block_remove", blockId: op.blockRemove.blockId };
 	if (op.blockUpdate) return { kind: "block_update", blockId: op.blockUpdate.blockId };
@@ -220,7 +220,7 @@ function summarizeBlock(block: Block): EventOp {
 				blockKind: "tool_use",
 				toolName: meta.tool_name ?? "",
 				toolUseId: meta.tool_use_id ?? "",
-				preview,
+				preview: preview ?? "",
 			};
 		}
 		if (contentType === BLOCK_TOOL_RESULT) {
@@ -241,7 +241,7 @@ function summarizeBlock(block: Block): EventOp {
 			};
 		}
 	}
-	return { kind: "block", blockKind: "other" };
+	return { kind: "block", blockKind: "other", preview: "" };
 }
 
 function previewValue(v: any): string | undefined {

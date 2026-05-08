@@ -456,8 +456,18 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 }
 .change-row.head .dot { background: var(--warn); box-shadow: 0 0 8px rgba(255,200,87,.55); }
 .change-row .hash { color: var(--text-dim); }
-.change-row .ops { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+	.change-row .ops { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.auth-badge {
+		display: inline-block;
+		margin-left: 6px;
+		padding: 1px 5px;
+		border-radius: 3px;
+		font-size: 10px;
+		text-transform: uppercase;
+		background: var(--accent);
+		color: var(--bg);
+		opacity: 0.8;
+	}
 /* ── Footer ───────────────────────────────────────────────────── */
 #bottom {
 	position: fixed;

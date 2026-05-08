@@ -307,6 +307,12 @@ function render(detail, changesResponse) {
 		const ops = document.createElement("span"); ops.className = "ops";
 		ops.textContent = ch.opSummary.join(" ");
 		ops.title = ch.opSummary.join("\n");
+		if (ch.authType) {
+			const badge = document.createElement("span");
+			badge.className = "auth-badge";
+			badge.textContent = ch.authType;
+			ops.appendChild(badge);
+		}
 		row.appendChild(dot); row.appendChild(hash); row.appendChild(ops);
 		els.changes.appendChild(row);
 	}

@@ -11,7 +11,11 @@
 		"resolveJsonModule": true,
 		"allowSyntheticDefaultImports": true,
 		"noEmit": true,
-		"types": ["node"]
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"glon/*": ["../Graice/src/*"]
+		}
 	},
 	"include": ["server/**/*.ts"]
 }
