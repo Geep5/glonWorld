@@ -987,12 +987,13 @@ function onDoubleClick(e) {
 	const ud = first.userData;
 	if (ud.kind === "object") {
 		const target = first.position.clone();
-		// Birds-eye distance scales with node size so tiny anchors aren't specks
-		const r = first.geometry?.boundingSphere?.radius ?? 1;
+		// Camera distance: minimum 18 units so even tiny anchors are visible in context,
+		// scaling up gently for larger nodes so agents don't fill the screen.
+		const r = first.geometry?.parameters?.radius ?? 1;
 		const s = first.scale.x;
 		const worldR = r * s;
-		const birdsEyeHeight = Math.max(12, worldR * 12 + 6);
-		const birdsEyePos = new THREE.Vector3(target.x + worldR * 2, target.y + birdsEyeHeight, target.z + worldR * 2);
+		const birdsEyeHeight = Math.max(28, worldR * 5 + 12);
+		const birdsEyePos = new THREE.Vector3(target.x + worldR * 3, target.y + birdsEyeHeight, target.z + worldR * 3);
 		tweenCamera(birdsEyePos, target);
 		select(ud.id);
 		followId = ud.id;
@@ -1043,13 +1044,13 @@ function onDoubleClick(e) {
 		const node = cosmosCtx.nodes.get(id);
 		if (!node) return;
 		const target = node.mesh.position.clone();
-		// Camera distance scales with node size: close for agents, farther for anchors
-		const r = node.mesh.geometry?.boundingSphere?.radius ?? 1;
+		// Minimum 15 units so small nodes don't overwhelm the viewport.
+		const r = node.mesh.geometry?.parameters?.radius ?? 1;
 		const s = node.mesh.scale.x;
 		const worldR = r * s;
-		const dist = Math.max(3, worldR * 8 + 2);
+		const dist = Math.max(15, worldR * 4 + 10);
 		const offset = target.clone().normalize().multiplyScalar(dist);
-		tweenCamera(target.clone().add(offset).add(new THREE.Vector3(0, dist * 0.5, 0)), target);
+		tweenCamera(target.clone().add(offset).add(new THREE.Vector3(0, dist * 0.4, 0)), target);
 	}
 
 function highlightSelected() {
