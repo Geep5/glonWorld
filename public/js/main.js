@@ -28,13 +28,16 @@ import { showPaymentModal } from "./payment-modal.js";
 	// ── State ──────────────────────────────────────────────────────────
 let snapshot = null;
 
-let scene, camera, renderer, composer, controls;
-let cosmosCtx;
-let pickables = [];         // meshes the raycaster considers
-let selectedId = null;
-let hoverId = null;
-let labelCanvas, labelCtx;
-let timeFilter = null;      // ms upper bound, or null for live
+	let scene, camera, renderer, composer, controls;
+	let cosmosCtx;
+	let pickables = [];         // meshes the raycaster considers
+	let selectedId = null;
+	let hoverId = null;
+	let labelCanvas, labelCtx;
+	let timeFilter = null;      // ms upper bound, or null for live
+	// Inspector preview: close-up render of selected node
+	let previewRenderer, previewScene, previewCamera, previewMesh, previewLight;
+	let previewRotation = 0;
 // Watched agent for in-context highlighting; picked by activity at init.
 let contextAgentId = null;
 
@@ -193,11 +196,32 @@ function setupThree() {
 		new THREE.Vector2(window.innerWidth, window.innerHeight),
 		0.55,   // strength  (was 1.1)
 		0.55,   // radius    (was 0.7)
-		0.95,   // threshold (was 0.85; raised so heat flashes stay calm)
 	);
 	composer.addPass(bloom);
 
+	// ── Inspector preview renderer ──────────────────────────────────
+	const previewCanvas = document.getElementById("inspector-preview");
+	if (previewCanvas) {
+		previewRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true, alpha: false });
+		previewRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+		previewRenderer.setSize(324, 180);
+		previewRenderer.setClearColor(0x0a0a12, 1);
+		previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+		previewRenderer.toneMappingExposure = 1.15;
+		previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+
+		previewScene = new THREE.Scene();
+		previewScene.add(new THREE.AmbientLight(0x404060, 0.4));
+		previewLight = new THREE.PointLight(0xffe0a8, 1.2, 20, 1.2);
+		previewLight.position.set(3, 4, 5);
+		previewScene.add(previewLight);
+
+		previewCamera = new THREE.PerspectiveCamera(40, 324 / 180, 0.1, 50);
+		previewCamera.position.set(0, 0, 4);
+	}
+
 	window.addEventListener("resize", onResize);
+
 	// Planet render changes from inspector — update mesh immediately
 	window.addEventListener("planet-render-changed", (e) => {
 		const node = cosmosCtx?.nodes?.get(e.detail.objectId);
@@ -969,9 +993,47 @@ function onDoubleClick(e) {
 		selectedId = id;
 		showObject(id);
 		highlightSelected();
+		updatePreview();
 		if (focus) focusOnId(id);
 	}
 
+	// ── Inspector preview ────────────────────────────────────────────
+	function updatePreview() {
+		if (!previewScene || !previewRenderer) return;
+		// Remove old preview mesh
+		if (previewMesh) {
+			previewScene.remove(previewMesh);
+			if (previewMesh.geometry) previewMesh.geometry.dispose();
+			if (previewMesh.material) {
+				if (Array.isArray(previewMesh.material)) {
+					previewMesh.material.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+				} else {
+					if (previewMesh.material.map) previewMesh.material.map.dispose();
+					previewMesh.material.dispose();
+				}
+			}
+			previewMesh = null;
+		}
+		if (!selectedId || !cosmosCtx?.nodes?.has(selectedId)) {
+			previewRenderer.clear();
+			return;
+		}
+		const node = cosmosCtx.nodes.get(selectedId);
+		if (!node?.mesh) return;
+		// Deep-clone the mesh for the preview scene
+		previewMesh = node.mesh.clone(true);
+		previewMesh.position.set(0, 0, 0);
+		previewMesh.rotation.set(0, 0, 0);
+		// Normalize scale so even tiny anchors fill the viewport
+		const targetSize = 1.6;
+		const bbox = new THREE.Box3().setFromObject(previewMesh);
+		const size = bbox.getSize(new THREE.Vector3());
+		const maxDim = Math.max(size.x, size.y, size.z);
+		const scale = maxDim > 0 ? targetSize / maxDim : 1;
+		previewMesh.scale.setScalar(scale);
+		previewScene.add(previewMesh);
+		previewRotation = 0;
+	}
 function focusOnId(id) {
 	const node = cosmosCtx.nodes.get(id);
 	if (!node) return;
@@ -1325,6 +1387,16 @@ function animate() {
 		}
 	}
 	composer.render();
+
+	// Inspector preview: slowly rotate the selected node
+	if (previewRenderer && previewScene && previewCamera) {
+		if (previewMesh) {
+			previewRotation += dt * 0.4;
+			previewMesh.rotation.y = previewRotation;
+		}
+		previewRenderer.render(previewScene, previewCamera);
+	}
+
 	drawLabels();
 
 	frameCount++;
