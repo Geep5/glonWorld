@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getWalletPubkeys } from "./reader.js";
 import { getCoinOverview } from "./reader.js";
+	import { getPrograms } from "./daemon-client.js";
 import { startWatcher, streamEvents, recentEvents } from "./events.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -227,6 +228,16 @@ app.get("/api/coins", (_req, res) => {
 	res.json(getCoinOverview());
 });
 
+
+	// Program registry: auto-discover what programs glon is running.
+	app.get("/api/programs", async (_req, res) => {
+		const programs = await getPrograms();
+		if (programs) {
+			res.json({ ok: true, programs });
+		} else {
+			res.status(503).json({ ok: false, error: "daemon offline" });
+		}
+	});
 // Payment modal: authorize + settle
 app.post("/api/pay/authorize", async (req, res) => {
 	const { tokenId, amount, recipient, validForSec, keyName } = req.body;

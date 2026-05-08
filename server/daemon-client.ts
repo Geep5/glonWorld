@@ -33,3 +33,17 @@ export async function dispatchToDaemon(
 		return null;
 	}
 }
+
+	const DAEMON_PROGRAMS_URL = `http://127.0.0.1:${DAEMON_PORT}/programs`;
+
+	/** Fetch the list of loaded programs from the daemon. Returns null if offline. */
+	export async function getPrograms(): Promise<{ id: string; prefix: string; name: string; typedActions?: Record<string, { description?: string; inputSchema?: Record<string, unknown> }>; tickMs?: number }[] | null> {
+		try {
+			const res = await fetch(DAEMON_PROGRAMS_URL, { method: "GET" });
+			if (!res.ok) return null;
+			const data = await res.json() as { ok: boolean; programs: any[] };
+			return data.ok ? data.programs : null;
+		} catch {
+			return null;
+		}
+	}
