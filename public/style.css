@@ -294,6 +294,7 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 	}
 
 	/* ── Panel resize handle ───────────────────────────────────── */
+	.panel-resize-handle {
 		position: absolute;
 		right: 0;
 		bottom: 0;
