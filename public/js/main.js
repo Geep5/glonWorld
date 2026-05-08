@@ -211,10 +211,17 @@ function setupThree() {
 		previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
 
 		previewScene = new THREE.Scene();
-		previewScene.add(new THREE.AmbientLight(0x404060, 0.4));
-		previewLight = new THREE.PointLight(0xffe0a8, 1.2, 20, 1.2);
+		// Brighter ambient + multi-point lighting so even dark Lambert nodes read clearly
+		previewScene.add(new THREE.AmbientLight(0x606080, 0.7));
+		previewLight = new THREE.PointLight(0xfff0d0, 1.8, 30, 1.0);
 		previewLight.position.set(3, 4, 5);
 		previewScene.add(previewLight);
+		const fillLight = new THREE.PointLight(0xd0e0ff, 0.8, 20, 1.2);
+		fillLight.position.set(-4, 1, -3);
+		previewScene.add(fillLight);
+		const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+		rimLight.position.set(0, 2, -5);
+		previewScene.add(rimLight);
 
 		previewCamera = new THREE.PerspectiveCamera(40, 324 / 180, 0.1, 50);
 		previewCamera.position.set(0, 0, 4);
@@ -978,15 +985,19 @@ function onDoubleClick(e) {
 	const first = hits[0]?.object;
 	if (!first) return;
 	const ud = first.userData;
-		if (ud.kind === "object") {
-			const target = first.position.clone();
-			const birdsEyePos = new THREE.Vector3(target.x + 4, target.y + 35, target.z + 4);
-			tweenCamera(birdsEyePos, target);
-			select(ud.id);
-			followId = ud.id;
-		}
-}
-
+	if (ud.kind === "object") {
+		const target = first.position.clone();
+		// Birds-eye distance scales with node size so tiny anchors aren't specks
+		const r = first.geometry?.boundingSphere?.radius ?? 1;
+		const s = first.scale.x;
+		const worldR = r * s;
+		const birdsEyeHeight = Math.max(12, worldR * 12 + 6);
+		const birdsEyePos = new THREE.Vector3(target.x + worldR * 2, target.y + birdsEyeHeight, target.z + worldR * 2);
+		tweenCamera(birdsEyePos, target);
+		select(ud.id);
+		followId = ud.id;
+	}
+	}
 // ── Selection + highlighting ──────────────────────────────────────
 
 	function select(id, { focus = false } = {}) {
@@ -1004,14 +1015,8 @@ function onDoubleClick(e) {
 		if (previewMesh) {
 			previewScene.remove(previewMesh);
 			if (previewMesh.geometry) previewMesh.geometry.dispose();
-			if (previewMesh.material) {
-				if (Array.isArray(previewMesh.material)) {
-					previewMesh.material.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
-				} else {
-					if (previewMesh.material.map) previewMesh.material.map.dispose();
-					previewMesh.material.dispose();
-				}
-			}
+			// NOTE: do NOT dispose material.map — textures are shared across clones.
+			// Only dispose geometry to avoid leaks.
 			previewMesh = null;
 		}
 		if (!selectedId || !cosmosCtx?.nodes?.has(selectedId)) {
@@ -1034,13 +1039,18 @@ function onDoubleClick(e) {
 		previewScene.add(previewMesh);
 		previewRotation = 0;
 	}
-function focusOnId(id) {
-	const node = cosmosCtx.nodes.get(id);
-	if (!node) return;
-	const target = node.mesh.position.clone();
-	const offset = target.clone().normalize().multiplyScalar(5);
-	tweenCamera(target.clone().add(offset).add(new THREE.Vector3(0, 3, 0)), target);
-}
+	function focusOnId(id) {
+		const node = cosmosCtx.nodes.get(id);
+		if (!node) return;
+		const target = node.mesh.position.clone();
+		// Camera distance scales with node size: close for agents, farther for anchors
+		const r = node.mesh.geometry?.boundingSphere?.radius ?? 1;
+		const s = node.mesh.scale.x;
+		const worldR = r * s;
+		const dist = Math.max(3, worldR * 8 + 2);
+		const offset = target.clone().normalize().multiplyScalar(dist);
+		tweenCamera(target.clone().add(offset).add(new THREE.Vector3(0, dist * 0.5, 0)), target);
+	}
 
 function highlightSelected() {
 	cosmosCtx?.setSelected?.(selectedId);
