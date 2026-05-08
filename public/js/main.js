@@ -351,6 +351,7 @@ function setupThree() {
 		renderCoins(snapshot.objects);
 		startJobsRefresh();
 		startTasksRefresh();
+		bindTaskForm();
 	}
 // Re-render the jobs panel from a fresh /api/state every JOBS_POLL_MS.
 // Each row shows context-window fill (the bar that drives compaction),
@@ -370,100 +371,178 @@ function startJobsRefresh() {
 	setInterval(tickReminderBars, 1000);
 }
 
-// ── Tasks panel ──────────────────────────────────────────────────
+	// ── Tasks panel ──────────────────────────────────────────────────
 
-const TASKS_POLL_MS = 5000;
-const DAEMON_TASKS_URL = "http://127.0.0.1:6430/tasks";
-let tasksTimer = 0;
+	const TASKS_POLL_MS = 5000;
+	const TASKS_URL = "/api/tasks";
+	let tasksTimer = 0;
 
-function startTasksRefresh() {
-	clearInterval(tasksTimer);
-	fetchAndRenderTasks();
-	tasksTimer = setInterval(fetchAndRenderTasks, TASKS_POLL_MS);
-}
-
-async function fetchAndRenderTasks() {
-	try {
-		const res = await fetch(DAEMON_TASKS_URL);
-		const data = await res.json();
-		renderTasks(data.tasks ?? []);
-	} catch {
-		/* keep last paint on transient error */
+	function startTasksRefresh() {
+		clearInterval(tasksTimer);
+		fetchAndRenderTasks();
+		tasksTimer = setInterval(fetchAndRenderTasks, TASKS_POLL_MS);
 	}
-}
 
-function renderTasks(tasks) {
-	const host = document.getElementById("tasks-list");
-	const countEl = document.getElementById("tasks-count");
-	if (!host) return;
-	countEl.textContent = String(tasks.length);
-	host.innerHTML = "";
+	async function fetchAndRenderTasks() {
+		try {
+			const res = await fetch(TASKS_URL);
+			const data = await res.json();
+			renderTasks(data.tasks ?? []);
+		} catch {
+			/* keep last paint on transient error */
+		}
+	}
 
-	// Sort: enabled first, then by name
-	tasks.sort((a, b) => {
-		if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-		return (a.name ?? "").localeCompare(b.name ?? "");
-	});
+	function renderTasks(tasks) {
+		const host = document.getElementById("tasks-list");
+		const countEl = document.getElementById("tasks-count");
+		if (!host) return;
+		countEl.textContent = String(tasks.length);
+		host.innerHTML = "";
 
-	for (const t of tasks) {
-		const li = document.createElement("li");
-		li.className = "task-row" + (t.enabled ? "" : " disabled");
+		// Sort: enabled first, then by name
+		tasks.sort((a, b) => {
+			if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+			return (a.name ?? "").localeCompare(b.name ?? "");
+		});
 
-		const label = document.createElement("label");
-		label.className = "task-toggle";
-		const cb = document.createElement("input");
-		cb.type = "checkbox";
-		cb.checked = t.enabled;
-		cb.addEventListener("change", async () => {
+		for (const t of tasks) {
+			const li = document.createElement("li");
+			const isReminder = t.type === "reminder";
+			li.className = "task-row" + (t.enabled ? "" : " disabled") + (isReminder ? " reminder" : "") + (t.overdue ? " overdue" : "");
+
+			const label = document.createElement("label");
+			label.className = "task-toggle";
+			const cb = document.createElement("input");
+			cb.type = "checkbox";
+			cb.checked = t.enabled;
+			cb.addEventListener("change", async () => {
+				try {
+					let res;
+					if (isReminder) {
+						if (!cb.checked) {
+							res = await fetch(`${TASKS_URL}/reminders/${encodeURIComponent(t.id)}/cancel`, { method: "POST" });
+						} else {
+							// Can't re-enable a cancelled reminder; user must recreate
+							cb.checked = false;
+							return;
+						}
+					} else {
+						res = await fetch(`http://127.0.0.1:6430/tasks/${encodeURIComponent(t.id)}/toggle`, { method: "POST" });
+					}
+					const data = await res.json();
+					if (!data.ok) console.error("Toggle failed:", data.error);
+					setTimeout(fetchAndRenderTasks, 300);
+				} catch (err) {
+					console.error("Toggle error:", err);
+				}
+			});
+			const slider = document.createElement("span");
+			slider.className = "task-toggle-slider";
+			label.appendChild(cb);
+			label.appendChild(slider);
+
+			const info = document.createElement("div");
+			info.style.minWidth = "0";
+			const name = document.createElement("div");
+			name.className = "task-name";
+			name.textContent = t.name ?? t.id;
+			if (t.programId) {
+				name.style.cursor = "pointer";
+				name.title = "Click to inspect source";
+				name.addEventListener("click", () => select(t.programId, { focus: true }));
+			} else if (t.type === "daemon") {
+				name.style.cursor = "pointer";
+				name.title = "Click to inspect daemon";
+				name.addEventListener("click", () => showDaemonTask(t));
+			} else if (isReminder) {
+				name.style.cursor = "pointer";
+				name.title = "Click to inspect reminder";
+				name.addEventListener("click", () => select(t.id, { focus: true }));
+			}
+			const meta = document.createElement("div");
+			meta.className = "task-meta";
+			let metaText;
+			if (isReminder) {
+				const fireStr = t.fireAt ? new Date(t.fireAt).toLocaleString() : "-";
+				metaText = `reminder · ${t.channel} · ${fireStr}`;
+				if (t.overdue) metaText += " · OVERDUE";
+			} else {
+				const interval = t.intervalMs ? `${(t.intervalMs / 1000).toFixed(0)}s` : "-";
+				metaText = `${t.type} · ${interval}`;
+			}
+			meta.textContent = metaText;
+			info.appendChild(name);
+			info.appendChild(meta);
+
+			li.appendChild(info);
+			li.appendChild(label);
+			host.appendChild(li);
+		}
+
+		if (tasks.length === 0) {
+			const li = document.createElement("li");
+			li.className = "task-row empty";
+			li.textContent = "no tasks";
+			host.appendChild(li);
+		}
+	}
+
+	// ── New task form ────────────────────────────────────────────────
+	function bindTaskForm() {
+		const btn = document.getElementById("task-new-btn");
+		const form = document.getElementById("task-new-form");
+		const cancel = document.getElementById("task-new-cancel");
+		const fireInput = document.getElementById("task-new-fire");
+		if (!btn || !form) return;
+
+		// Default fire time to tomorrow 5am PST
+		const now = new Date();
+		const pst = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+		pst.setDate(pst.getDate() + 1);
+		pst.setHours(5, 0, 0, 0);
+		const isoLocal = new Date(pst.getTime() - pst.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+		if (fireInput) fireInput.value = isoLocal;
+
+		btn.addEventListener("click", () => {
+			form.hidden = !form.hidden;
+		});
+		cancel?.addEventListener("click", () => {
+			form.hidden = true;
+		});
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const name = document.getElementById("task-new-name").value.trim();
+			const channel = document.getElementById("task-new-channel").value;
+			const target = document.getElementById("task-new-target").value.trim();
+			const fireAt = document.getElementById("task-new-fire").value;
+			const payloadRaw = document.getElementById("task-new-payload").value.trim();
+			let payload;
 			try {
-				const res = await fetch(`${DAEMON_TASKS_URL}/${encodeURIComponent(t.id)}/toggle`, { method: "POST" });
+				payload = payloadRaw ? JSON.parse(payloadRaw) : {};
+			} catch {
+				payload = { prompt: payloadRaw || "run task" };
+			}
+			const fireIso = new Date(fireAt).toISOString();
+			try {
+				const res = await fetch("/api/tasks/reminders", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ channel, target, fireAt: fireIso, payload, note: name }),
+				});
 				const data = await res.json();
-				if (!data.ok) console.error("Toggle failed:", data.error);
-				// Refresh the list after a short delay to show updated state
-				setTimeout(fetchAndRenderTasks, 300);
+				if (!data.ok) {
+					console.error("Schedule failed:", data.error);
+					return;
+				}
+				form.hidden = true;
+				form.reset();
+				fetchAndRenderTasks();
 			} catch (err) {
-				console.error("Toggle error:", err);
+				console.error("Schedule error:", err);
 			}
 		});
-		const slider = document.createElement("span");
-		slider.className = "task-toggle-slider";
-		label.appendChild(cb);
-		label.appendChild(slider);
-
-		const info = document.createElement("div");
-		info.style.minWidth = "0";
-		const name = document.createElement("div");
-		name.className = "task-name";
-		name.textContent = t.name ?? t.id;
-		if (t.programId) {
-			name.style.cursor = "pointer";
-			name.title = "Click to inspect source";
-			name.addEventListener("click", () => select(t.programId, { focus: true }));
-		} else if (t.type === "daemon") {
-			name.style.cursor = "pointer";
-			name.title = "Click to inspect daemon";
-			name.addEventListener("click", () => showDaemonTask(t));
-		}
-		const meta = document.createElement("div");
-		meta.className = "task-meta";
-		const interval = t.intervalMs ? `${(t.intervalMs / 1000).toFixed(0)}s` : "-";
-		meta.textContent = `${t.type} · ${interval}`;
-		info.appendChild(name);
-		info.appendChild(meta);
-
-		li.appendChild(info);
-		li.appendChild(label);
-		host.appendChild(li);
 	}
-
-	if (tasks.length === 0) {
-		const li = document.createElement("li");
-		li.className = "task-row empty";
-		li.textContent = "no tasks";
-		host.appendChild(li);
-	}
-}
-
 function tickReminderBars() {
 	const now = Date.now();
 	document.querySelectorAll("#jobs-list .job-row.reminder").forEach((row) => {

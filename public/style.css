@@ -875,9 +875,68 @@ input[type="search"]:focus { border-color: rgba(94,234,212,.45); }
 }
 
 .task-row.disabled .task-name { color: var(--text-dim); }
-.task-row.disabled .task-meta { color: var(--text-dim); opacity: 0.6; }
-	/* ── Coins panel ─────────────────────────────────────────────── */
+	.task-row.disabled .task-meta { color: var(--text-dim); opacity: 0.6; }
 
+	/* ── Task form ────────────────────────────────────────────────── */
+	.task-toolbar { padding: 0 4px 8px; }
+	.task-new-btn {
+		font: 11px ui-sans-serif, system-ui, sans-serif;
+		padding: 4px 10px;
+		border-radius: 6px;
+		border: 1px solid var(--stroke-strong);
+		background: transparent;
+		color: var(--accent);
+		cursor: pointer;
+	}
+	.task-new-btn:hover { background: rgba(94, 234, 212, 0.08); }
+	.task-new-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 0 4px 10px;
+		border-bottom: 1px solid var(--stroke);
+		margin-bottom: 8px;
+	}
+	.task-new-form input,
+	.task-new-form select,
+	.task-new-form textarea {
+		font: 11px ui-monospace, monospace;
+		padding: 5px 8px;
+		border-radius: 5px;
+		border: 1px solid var(--stroke);
+		background: var(--bg-panel);
+		color: var(--text);
+		outline: none;
+	}
+	.task-new-form input:focus,
+	.task-new-form select:focus,
+	.task-new-form textarea:focus { border-color: var(--accent); }
+	.task-new-form textarea { resize: vertical; min-height: 40px; }
+	.task-new-actions {
+		display: flex;
+		gap: 6px;
+		justify-content: flex-end;
+	}
+	.task-new-actions button {
+		font: 11px ui-sans-serif, system-ui, sans-serif;
+		padding: 4px 10px;
+		border-radius: 5px;
+		border: 1px solid var(--stroke);
+		background: transparent;
+		color: var(--text);
+		cursor: pointer;
+	}
+	.task-new-actions button[type="submit"] {
+		background: rgba(94, 234, 212, 0.12);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.task-new-actions button:hover { opacity: 0.85; }
+	.task-row.reminder .task-meta { color: var(--accent); }
+	.task-row.reminder.overdue .task-meta { color: #ff6b7a; }
+	.task-row.reminder.overdue .task-name { color: #ff6b7a; }
+
+	/* ── Coins panel ─────────────────────────────────────────────── */
 #crypto {
 	position: fixed;
 	right: 340px;

@@ -249,7 +249,95 @@ app.get("/api/wallet", (_req, res) => {
 			res.status(503).json({ ok: false, error: "daemon offline" });
 		}
 	});
-// Payment modal: authorize + settle
+
+	// ── Tasks: merged daemon tasks + glon reminders ──────────────────
+
+	const DAEMON_TASKS_URL = "http://127.0.0.1:6430/tasks";
+	const GLON_DISPATCH_URL = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+
+	app.get("/api/tasks", async (_req, res) => {
+		try {
+			const [daemonRes, snap] = await Promise.all([
+				fetch(DAEMON_TASKS_URL).then(r => r.ok ? r.json() : { tasks: [] }).catch(() => ({ tasks: [] })),
+				Promise.resolve(snapshot()),
+			]);
+			const daemonTasks = (daemonRes.tasks ?? []).map((t: any) => ({ ...t, source: "daemon" }));
+			const reminders = (snap.objects ?? [])
+				.filter((o) => o.typeKey === "reminder" && !o.deleted)
+				.map((o) => {
+					const sc = (o as any).rawFields ?? {};
+					const status = String(sc.status ?? "pending");
+					const fireAt = Number(sc.fire_at_ms ?? 0);
+					const now = Date.now();
+					return {
+						id: o.id,
+						name: String(sc.note ?? o.name ?? o.id),
+						type: "reminder",
+						enabled: status === "pending" || status === "sending",
+						status,
+						fireAt,
+						channel: String(sc.channel ?? "-"),
+						target: String(sc.target ?? "-"),
+						payload: sc.payload,
+						overdue: fireAt <= now && status === "pending",
+						source: "glon",
+					};
+				});
+			res.json({ ok: true, tasks: [...daemonTasks, ...reminders] });
+		} catch (err: any) {
+			res.status(500).json({ ok: false, error: err?.message ?? String(err) });
+		}
+	});
+
+	app.post("/api/tasks/reminders", async (req, res) => {
+		const { channel, target, fireAt, payload, note, createdBy } = req.body;
+		if (!channel || !fireAt || !payload) {
+			return res.status(400).json({ ok: false, error: "channel, fireAt, and payload are required" });
+		}
+		try {
+			const r = await fetch(GLON_DISPATCH_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					prefix: "/remind",
+					action: "schedule",
+					args: [{ channel, target, fire_at: fireAt, payload, note, created_by: createdBy }],
+				}),
+			});
+			if (!r.ok) {
+				const body = await r.text();
+				return res.status(502).json({ ok: false, error: `daemon dispatch failed (${r.status})`, body });
+			}
+			const data = await r.json();
+			res.json({ ok: true, ...(data.result ?? data) });
+		} catch (err: any) {
+			res.status(503).json({ ok: false, error: "could not reach glon daemon", detail: err?.message ?? String(err) });
+		}
+	});
+
+	app.post("/api/tasks/reminders/:id/cancel", async (req, res) => {
+		try {
+			const r = await fetch(GLON_DISPATCH_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					prefix: "/remind",
+					action: "cancel",
+					args: [req.params.id],
+				}),
+			});
+			if (!r.ok) {
+				const body = await r.text();
+				return res.status(502).json({ ok: false, error: `daemon dispatch failed (${r.status})`, body });
+			}
+			const data = await r.json();
+			res.json({ ok: true, ...(data.result ?? data) });
+		} catch (err: any) {
+			res.status(503).json({ ok: false, error: "could not reach glon daemon", detail: err?.message ?? String(err) });
+		}
+	});
+
+	// Payment modal: authorize + settle
 app.post("/api/pay/authorize", async (req, res) => {
 	const { tokenId, amount, recipient, validForSec, keyName } = req.body;
 	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
