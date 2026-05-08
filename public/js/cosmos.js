@@ -245,9 +245,9 @@ function floatFreq(id, axis) {
 }
 
 	// Snap-magnet tunables
-	const SNAP_RADIUS = 5.0;      // cursor-ray distance to snap a node
-	const SNAP_SPRING_K = 28.0;   // how hard snapped nodes are pulled toward cursor
-	const SNAP_DAMP = 1.0;        // low damping so they feel responsive
+	const SNAP_RADIUS = 4.0;      // cursor-ray distance to snap a node
+	const SNAP_SPRING_K = 16.0;   // gentler pull toward cursor
+	const SNAP_DAMP = 2.5;        // more damping so it doesn't whip
 
 	// Selected-node repulsion: nearby balls are gently pushed away so they
 	// don't visually pass through the selected node.
