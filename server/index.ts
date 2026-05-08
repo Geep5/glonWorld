@@ -17,7 +17,8 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getWalletPubkeys } from "./reader.js";
-import { getCoinOverview } from "./reader.js";
+	import { getCoinOverview } from "./reader.js";
+	import { getGlobalCoinStatsViaDaemon } from "./coins.js";
 	import { getPrograms } from "./daemon-client.js";
 import { startWatcher, streamEvents, recentEvents } from "./events.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -223,10 +224,20 @@ app.get("/api/wallet", (_req, res) => {
 });
 
 
-// Coin overview: all chain.coin.bucket objects with derived state
-app.get("/api/coins", (_req, res) => {
-	res.json(getCoinOverview());
-});
+	// Coin overview: all chain.coin.bucket objects with derived state
+	app.get("/api/coins", (_req, res) => {
+		res.json(getCoinOverview());
+	});
+
+	// Global coin stats from SQLite index (daemon)
+	app.get("/api/coins/stats", async (_req, res) => {
+		const stats = await getGlobalCoinStatsViaDaemon();
+		if (stats) {
+			res.json({ ok: true, source: "sqlite", stats });
+		} else {
+			res.status(503).json({ ok: false, error: "daemon offline — coin stats require daemon" });
+		}
+	});
 
 
 	// Program registry: auto-discover what programs glon is running.

@@ -183,3 +183,17 @@ export function getGlobalCoinStats(allObjects: Iterable<{ state: { typeKey: stri
 	}
 	return result;
 }
+
+	/** Query global coin stats from daemon SQLite index. Returns null if daemon offline. */
+	export async function getGlobalCoinStatsViaDaemon(): Promise<Record<string, { totalSupply: string; holders: number; buckets: number }> | null> {
+		const result = await dispatchToDaemon("/coin", "coinStats", [{}]);
+		if (!result) return null;
+		return result as Record<string, { totalSupply: string; holders: number; buckets: number }>;
+	}
+
+	/** Query holders for a token from daemon SQLite index. Returns null if daemon offline. */
+	export async function getCoinHoldersViaDaemon(tokenId: string): Promise<{ pubkey: string; balance: string }[] | null> {
+		const result = await dispatchToDaemon("/coin", "coinHolders", [{ tokenId }]);
+		if (!result) return null;
+		return result as { pubkey: string; balance: string }[];
+	}
