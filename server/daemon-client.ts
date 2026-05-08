@@ -6,9 +6,8 @@
  * a parallel implementation.
  */
 
-const DAEMON_PORT = Number(process.env.GLON_DAEMON_PORT ?? 6430);
-const DAEMON_URL = `http://127.0.0.1:${DAEMON_PORT}/dispatch`;
-
+	const DAEMON_PORT = Number(process.env.GLON_DAEMON_PORT ?? 6420);
+	export const DAEMON_URL = `http://127.0.0.1:${DAEMON_PORT}/dispatch`;
 interface DispatchRequest {
 	prefix: string;
 	action: string;

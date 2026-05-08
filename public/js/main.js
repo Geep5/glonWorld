@@ -465,15 +465,15 @@ function startJobsRefresh() {
 				name.title = "Click to inspect daemon";
 				name.addEventListener("click", () => showDaemonTask(t));
 			} else if (isReminder && t.channel === "agent_compose" && t.target) {
-				// Open chat with the target agent so user can talk to Graice about the task
+				// Inspector shows full reminder details; chat proxy requires daemon dispatch
+				// which isn't available over HTTP in the current RivetKit architecture.
 				name.style.cursor = "pointer";
-				name.title = "Click to chat with agent";
-				name.addEventListener("click", () => openAgentChat(t.target, t.name ?? "Agent"));
+				name.title = "Click to inspect reminder";
+				name.addEventListener("click", () => select(t.id, { focus: true }));
 			} else if (isReminder) {
 				name.style.cursor = "pointer";
 				name.title = "Click to inspect reminder";
 				name.addEventListener("click", () => select(t.id, { focus: true }));
-			}
 
 			const meta = document.createElement("div");
 			meta.className = "task-meta";

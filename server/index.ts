@@ -19,8 +19,8 @@ import { dirname, join } from "node:path";
 import { snapshot, getObjectDetail, getObjectChanges, getAgentConversation, getAgentContextRefs, getRoot, search, getWalletPubkeys } from "./reader.js";
 	import { getCoinOverview } from "./reader.js";
 	import { getGlobalCoinStatsViaDaemon } from "./coins.js";
-	import { getPrograms } from "./daemon-client.js";
-import { startWatcher, streamEvents, recentEvents } from "./events.js";
+	import { getPrograms, DAEMON_URL } from "./daemon-client.js";
+	import { startWatcher, streamEvents, recentEvents } from "./events.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
@@ -76,7 +76,7 @@ app.get("/api/agents/:id/context", (req, res) => {
 		if (!message || typeof message !== "string") {
 			return res.status(400).json({ error: "message required" });
 		}
-		const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+		const dispatchUrl = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 		try {
 			const r = await fetch(dispatchUrl, {
 				method: "POST",
@@ -101,7 +101,7 @@ app.post("/api/agents/:agentId/inject/:objectId", async (req, res) => {
 	const detail = getObjectDetail(objectId);
 	if (!detail) return res.status(404).json({ error: "object not found" });
 	const summary = injectSummary(detail);
-	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 	try {
 		const r = await fetch(dispatchUrl, {
 			method: "POST",
@@ -159,13 +159,13 @@ app.get("/api/events/recent", (_req, res) => {
 	res.json({ events: recentEvents() });
 });
 
-// Re-inject a compacted block into an agent's live context. Proxies to the
-// glon daemon at $GLON_DISPATCH_URL (default http://127.0.0.1:6430), which
-// owns the actor that mutates the DAG. Returns the new block id so the
-// frontend can re-fetch the conversation and highlight it.
+	// Re-inject a compacted block into an agent's live context. Proxies to the
+	// glon daemon at $GLON_DISPATCH_URL (default port 6420), which
+	// owns the actor that mutates the DAG. Returns the new block id so the
+	// frontend can re-fetch the conversation and highlight it.
 app.post("/api/agents/:id/recall/:blockId", async (req, res) => {
 	const { id, blockId } = req.params;
-	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 	try {
 		const r = await fetch(dispatchUrl, {
 			method: "POST",
@@ -252,8 +252,8 @@ app.get("/api/wallet", (_req, res) => {
 
 	// ── Tasks: merged daemon tasks + glon reminders ──────────────────
 
-	const DAEMON_TASKS_URL = "http://127.0.0.1:6430/tasks";
-	const GLON_DISPATCH_URL = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	const DAEMON_TASKS_URL = DAEMON_URL.replace("/dispatch", "/tasks");
+	const GLON_DISPATCH_URL = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 
 	app.get("/api/tasks", async (_req, res) => {
 		try {
@@ -340,7 +340,7 @@ app.get("/api/wallet", (_req, res) => {
 	// Payment modal: authorize + settle
 app.post("/api/pay/authorize", async (req, res) => {
 	const { tokenId, amount, recipient, validForSec, keyName } = req.body;
-	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 	try {
 		const r = await fetch(dispatchUrl, {
 			method: "POST",
@@ -356,7 +356,7 @@ app.post("/api/pay/authorize", async (req, res) => {
 
 app.post("/api/pay/settle", async (req, res) => {
 	const { authorization, signature, keyName } = req.body;
-	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? "http://127.0.0.1:6430/dispatch";
+	const dispatchUrl = process.env.GLON_DISPATCH_URL ?? DAEMON_URL;
 	try {
 		const r = await fetch(dispatchUrl, {
 			method: "POST",
