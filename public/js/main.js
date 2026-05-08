@@ -474,6 +474,7 @@ function startJobsRefresh() {
 				name.style.cursor = "pointer";
 				name.title = "Click to inspect reminder";
 				name.addEventListener("click", () => select(t.id, { focus: true }));
+			}
 
 			const meta = document.createElement("div");
 			meta.className = "task-meta";
